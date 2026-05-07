@@ -40,18 +40,18 @@ Drop or browse for a `.xlsx`, `.xls`, or `.csv` file. The first row is treated a
 
 This is where all the work happens. Each row in the mapping table represents one output column.
 
-#### Column Table Columns
+#### Column Table
 
-|Column             |Description                                               |
-|-------------------|----------------------------------------------------------|
-|⠿                  |Drag handle — drag rows to reorder output column positions|
-|☐                  |Checkbox — select for bulk operations                     |
-|#                  |Row number                                                |
-|Source Column      |Original column name from the file (or formula label)     |
-|Output Name        |What the column will be called in the exported file       |
-|Transform / Formula|Operation to apply to the column values                   |
-|Type               |`source`, `formula`, or `const`                           |
-|Actions            |↑ ↓ move, Drop/Restore, ✕ delete (formula cols only)      |
+|Column             |Description                                                 |
+|-------------------|------------------------------------------------------------|
+|⠿                  |Drag handle — drag rows to reorder output column positions  |
+|☐                  |Checkbox — select for bulk operations                       |
+|#                  |Row number                                                  |
+|Source Column      |Original column name from the file (or formula/script label)|
+|Output Name        |What the column will be called in the exported file         |
+|Transform / Formula|Operation to apply to the column values                     |
+|Type               |`source`, `formula`, or `const`                             |
+|Actions            |↑ ↓ move, Drop/Restore, ✕ delete (formula cols only)        |
 
 #### Per-Column Transforms
 
@@ -161,6 +161,175 @@ Example: splitting `[FullAddress]` by `,` with part `2` extracts the city from `
 
 -----
 
+### Script Editor
+
+For complex transformations that go beyond formulas, the toolbar has two script buttons that open a full-screen JavaScript editor with a console, a reference sidebar, and a saved script library.
+
+#### ⌨ Column Script
+
+Runs a JavaScript block that modifies the column mapping table in bulk. Use this when you need to rename, reformat, drop, or retransform many columns at once based on logic that would be tedious to apply manually.
+
+The script has direct access to `colDefs` (the mapping array) and `srcHeaders`. Modify `colDefs` in place — changes are applied to the mapping table when you click **Apply**.
+
+**Available colDef fields:**
+
+|Field        |Type   |Description                               |
+|-------------|-------|------------------------------------------|
+|`d.srcCol`   |string |Original source column name               |
+|`d.outName`  |string |Output column name (rename this)          |
+|`d.transform`|string |Transform key (see transform list above)  |
+|`d.dropped`  |boolean|Set to `true` to exclude from output      |
+|`d.formula`  |string |Formula expression (for formula-type cols)|
+|`d.type`     |string |`"source"`, `"formula"`, or `"const"`     |
+
+**Examples:**
+
+```js
+// Rename all date headers to P_YYYYMMDD format
+colDefs.forEach(d => {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(d.srcCol)) {
+    d.outName = 'P_' + d.srcCol.replace(/-/g, '');
+  }
+});
+```
+
+```js
+// Add dest_ prefix to all non-dropped columns
+colDefs.forEach(d => {
+  if (!d.dropped) d.outName = 'dest_' + d.outName;
+});
+```
+
+```js
+// Drop any column whose name contains "tmp" or "test"
+colDefs.forEach(d => {
+  if (/tmp|test/i.test(d.srcCol)) d.dropped = true;
+});
+```
+
+```js
+// Set trim transform on all source columns
+colDefs.forEach(d => {
+  if (d.type === 'source') d.transform = 'trim';
+});
+```
+
+```js
+// Rename columns from a lookup map
+const map = {
+  'cust_id':    'CustomerID',
+  'ord_dt':     'OrderDate',
+  'prod_code':  'ProductCode',
+};
+colDefs.forEach(d => {
+  if (map[d.srcCol]) d.outName = map[d.srcCol];
+});
+```
+
+-----
+
+#### ⌨ Row Script
+
+Runs a `transformRow(row)` function against every single row during Preview and Export. Use this for complex per-row logic: conditional value changes, multi-column derivations, date formatting, row filtering, or anything that the formula engine can’t express cleanly.
+
+**Signature:**
+
+```js
+function transformRow(row) {
+  const out = Object.assign({}, row); // clone — don't mutate row directly
+  // ... modify out ...
+  return out;       // return modified row to keep it
+  // return null;   // return null to DROP the row from output
+}
+```
+
+The function receives `row` as a plain object keyed by **source column names**. It must return either a modified row object or `null`/`false` to drop the row.
+
+**Built-in helper functions** (available inside the script without importing):
+
+|Helper           |Description                                    |
+|-----------------|-----------------------------------------------|
+|`trim(s)`        |Strip whitespace from string                   |
+|`upper(s)`       |Uppercase                                      |
+|`lower(s)`       |Lowercase                                      |
+|`left(s, n)`     |First n characters                             |
+|`right(s, n)`    |Last n characters                              |
+|`isBlank(v)`     |True if null, undefined, or empty string       |
+|`num(v)`         |Parse to number, stripping currency symbols    |
+|`toDate(v)`      |Parse to JS Date (handles Excel serial numbers)|
+|`fmtDate(v, fmt)`|Parse and format a date value                  |
+
+**`fmtDate` format strings:**
+
+|Format string |Example output|
+|--------------|--------------|
+|`'YYYY-MM-DD'`|`2024-03-15`  |
+|`'YYYYMMDD'`  |`20240315`    |
+|`'P_YYYYMMDD'`|`P_20240315`  |
+|`'MM/DD/YYYY'`|`03/15/2024`  |
+
+**Examples:**
+
+```js
+// Format all date columns as P_YYYYMMDD
+function transformRow(row) {
+  const out = Object.assign({}, row);
+  for (const key of Object.keys(out)) {
+    const d = toDate(out[key]);
+    if (d) out[key] = fmtDate(out[key], 'P_YYYYMMDD');
+  }
+  return out;
+}
+```
+
+```js
+// Drop rows where Amount is zero or blank
+function transformRow(row) {
+  if (isBlank(row.Amount) || num(row.Amount) === 0) return null;
+  return Object.assign({}, row);
+}
+```
+
+```js
+// Combine first + last name, clean phone
+function transformRow(row) {
+  const out = Object.assign({}, row);
+  out.FullName = trim(row.FirstName + ' ' + row.LastName);
+  out.Phone = out.Phone.replace(/[^\d]/g, '');
+  return out;
+}
+```
+
+```js
+// Flag high-value orders, drop cancelled ones
+function transformRow(row) {
+  if (row.Status === 'CANCELLED') return null;
+  const out = Object.assign({}, row);
+  out.ValueBand = num(row.Amount) >= 10000 ? 'HIGH' : 'STANDARD';
+  return out;
+}
+```
+
+> **Note:** The Row Script runs **after** all column mapping and transforms are applied. If you need to work with the original source column names, use the Row Script. If you need to work with the output column names, be aware that renaming happens in the mapping table first.
+
+-----
+
+#### Script Editor UI
+
+|Button               |Action                                                                                                                                      |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
+|**▶ Test**           |Runs the script against the first 3 rows and prints results to the console — does not modify any data                                       |
+|**✓ Apply**          |Column Script: applies changes to the mapping table immediately. Row Script: activates the script for all subsequent Preview and Export runs|
+|**💾 Save**           |Prompts for a name and saves the script to the browser’s local storage                                                                      |
+|**Load saved script**|Dropdown of previously saved scripts (filtered by mode — column scripts only appear in Column mode)                                         |
+|**Delete**           |Removes the currently selected saved script from storage                                                                                    |
+
+Scripts are saved per browser via `localStorage`. They persist across sessions but are browser-local — they are not stored in the HTML file itself. To share scripts between users, copy and paste the code manually or embed common scripts as defaults in the HTML.
+
+Tab key inserts two spaces. Escape closes the editor.
+
+-----
+
 ### Row Filter
 
 Collapse/expand from the **Row Filter** card:
@@ -175,7 +344,7 @@ Collapse/expand from the **Row Filter** card:
 
 ### Step 3 — Preview
 
-Shows the first 10 rows with all mapping rules applied. Review column names, order, and values before committing the full export.
+Shows the first 10 rows with all mapping rules applied — including any active Row Script. Review column names, order, and values before committing the full export.
 
 -----
 
@@ -188,13 +357,26 @@ Exports two files to the browser’s Downloads folder:
 
 -----
 
+## Processing Order
+
+When exporting, operations are applied in this order:
+
+1. **Row filter** — drop rows that don’t match the filter condition
+1. **Column mapping** — apply per-column transforms and evaluate formula/const columns
+1. **Column reordering** — output columns appear in the order shown in the mapping table
+1. **Row Script** — `transformRow()` runs on each row after mapping (if a row script is active)
+
+-----
+
 ## Technical Notes
 
 - **No external dependencies** — the entire application is one HTML file with no CDN calls, no npm packages, no server-side code
 - **Runs fully in the browser** — data is never uploaded anywhere
 - **XLSX parser** is built-in, handling ZIP decompression via the browser’s native `DecompressionStream` API (requires Edge 80+, Chrome 80+, Firefox 113+)
 - **Formula engine** uses JavaScript’s `Function` constructor in strict mode with a sandboxed function scope — only the listed functions are available
-- **Excel date serial detection** applies to both header rows (auto-converted on load) and data values (via the date transform)
+- **Script engine** similarly sandboxes user code — scripts run in strict mode with no access to the DOM or browser APIs beyond what is explicitly provided
+- **Script library** is stored in `localStorage` under the key `colmapper_scripts` — it is browser-local and not shared between users or machines
+- **Excel date serial detection** applies to header rows (auto-converted on load) and data values (via the date transform or `fmtDate` helper in scripts)
 
 -----
 
@@ -212,4 +394,6 @@ Internet Explorer is not supported.
 
 ## Updating the Tool
 
-Replace `excel_mapper.html` on the server with the new version. All users get the update immediately on next page load — no cache clearing needed for IIS static files served without aggressive cache headers.
+Replace `excel_mapper.html` on the server with the new version. All users get the update immediately on next page load.
+
+> Saved scripts are stored in each user’s browser `localStorage` and are **not** affected by updating the HTML file — they will still be there after an update.
