@@ -5,528 +5,102 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Excel Cleaner</title>
-<!--
-  SHAREPOINT DEPLOYMENT INSTRUCTIONS
-  ===================================
-  Option A — SharePoint Web Part (recommended):
-    1. Go to your SharePoint page → Edit
-    2. Add a web part → "Embed" or "Script Editor"
-    3. Paste the entire contents of this file
-    4. Save & Publish
-
-Option B — Document Library:
-1. Upload this file to a SharePoint Document Library
-2. Share the direct link with your team
-3. They open it in browser — works immediately
-
-Option C — SharePoint Site Page:
-1. Create a new Site Page
-2. Add “Embed” web part → paste full HTML
-3. Publish the page
-
-NOTES:
-- No internet connection required after load (fully self-contained)
-- Works in Edge, Chrome, Firefox
-- Files never leave the user’s machine — processed 100% in browser
-- To update the tool, just replace the file / re-paste the code
-–>
-
-<script>
-/*!
- * Embedded SheetJS-lite: pure JS XLSX/CSV reader+writer (subset)
- * Full credit: SheetJS Community Edition (Apache 2.0)
- * This is a minimal self-contained implementation for .xlsx and .csv
- */
-
-// ─── MINIMAL XLSX PARSER (no external deps) ──────────────────────────────────
-const XL = (() => {
-  // Base64 decode
-  function b64(s){return atob(s);}
-
-  // Unzip: parse ZIP central directory to get file list & offsets
-  function unzip(ab){
-    const u8=new Uint8Array(ab);
-    const files={};
-    // Find end of central directory
-    let eocd=-1;
-    for(let i=u8.length-22;i>=0;i--){
-      if(u8[i]===0x50&&u8[i+1]===0x4b&&u8[i+2]===0x05&&u8[i+3]===0x06){eocd=i;break;}
-    }
-    if(eocd<0) return files;
-    const cdOffset=u8[eocd+16]|(u8[eocd+17]<<8)|(u8[eocd+18]<<16)|(u8[eocd+19]<<24);
-    const cdSize=u8[eocd+12]|(u8[eocd+13]<<8)|(u8[eocd+14]<<16)|(u8[eocd+15]<<24);
-    let pos=cdOffset;
-    const dec=new TextDecoder();
-    while(pos<cdOffset+cdSize){
-      if(u8[pos]!==0x50||u8[pos+1]!==0x4b) break;
-      const fnLen=u8[pos+28]|(u8[pos+29]<<8);
-      const extraLen=u8[pos+30]|(u8[pos+31]<<8);
-      const commentLen=u8[pos+32]|(u8[pos+33]<<8);
-      const localOffset=u8[pos+42]|(u8[pos+43]<<8)|(u8[pos+44]<<16)|(u8[pos+45]<<24);
-      const fname=dec.decode(u8.slice(pos+46,pos+46+fnLen));
-      // Read local file header to get data
-      const lh=localOffset;
-      const lfnLen=u8[lh+26]|(u8[lh+27]<<8);
-      const lextraLen=u8[lh+28]|(u8[lh+29]<<8);
-      const dataStart=lh+30+lfnLen+lextraLen;
-      const compSize=u8[lh+18]|(u8[lh+19]<<8)|(u8[lh+20]<<16)|(u8[lh+21]<<24);
-      const compMethod=u8[lh+8]|(u8[lh+9]<<8);
-      let data;
-      if(compMethod===0){
-        data=u8.slice(dataStart,dataStart+compSize);
-      } else {
-        // deflate
-        try{ data=pako_inflate(u8.slice(dataStart,dataStart+compSize)); }
-        catch(e){ data=new Uint8Array(0); }
-      }
-      files[fname]=data;
-      pos+=46+fnLen+extraLen+commentLen;
-    }
-    return files;
-  }
-
-  // Minimal inflate (deflate decompressor) — enough for xlsx
-  function pako_inflate(input){
-    // Use DecompressionStream if available (modern browsers)
-    // We'll use a sync approach via a trick
-    return inflateRaw(input);
-  }
-
-  function inflateRaw(data){
-    // Use browser's native DecompressionStream (Chrome 80+, Edge 80+, Firefox 113+)
-    // For sync usage we need to do it differently - use a DataView based approach
-    // Instead, we'll use the CompressionStream API synchronously via XMLHttpRequest trick
-    try {
-      // Wrap in zlib header for DecompressionStream('deflate')
-      const wrapped=new Uint8Array(data.length+6);
-      wrapped[0]=0x78; wrapped[1]=0x9C;
-      wrapped.set(data,2);
-      // adler32
-      let s1=1,s2=0;
-      for(let i=0;i<data.length;i++){s1=(s1+data[i])%65521;s2=(s2+s1)%65521;}
-      const a=(s2<<16|s1)>>>0;
-      wrapped[data.length+2]=(a>>>24)&0xff;
-      wrapped[data.length+3]=(a>>>16)&0xff;
-      wrapped[data.length+4]=(a>>>8)&0xff;
-      wrapped[data.length+5]=a&0xff;
-      // Use sync XHR with blob URL
-      const blob=new Blob([wrapped]);
-      const url=URL.createObjectURL(blob);
-      const xhr=new XMLHttpRequest();
-      xhr.open('GET',url,false);
-      xhr.overrideMimeType('text/plain; charset=x-user-defined');
-      xhr.send();
-      URL.revokeObjectURL(url);
-      const raw=xhr.responseText;
-      const out=new Uint8Array(raw.length);
-      for(let i=0;i<raw.length;i++) out[i]=raw.charCodeAt(i)&0xff;
-      return out;
-    } catch(e){
-      return new Uint8Array(0);
-    }
-  }
-
-  const dec=new TextDecoder('utf-8',{fatal:false});
-
-  function xmlStr(data){ return dec.decode(data); }
-
-  // Parse shared strings
-  function parseSharedStrings(xml){
-    const ss=[];
-    const re=/<si>[\s\S]*?<\/si>/g;
-    let m;
-    while((m=re.exec(xml))!==null){
-      const si=m[0];
-      // get all <t> values
-      const texts=[];
-      const tr=/<t(?:[^>]*)>([\s\S]*?)<\/t>/g;
-      let tm;
-      while((tm=tr.exec(si))!==null) texts.push(unescape_xml(tm[1]));
-      ss.push(texts.join(''));
-    }
-    return ss;
-  }
-
-  function unescape_xml(s){
-    return s.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'");
-  }
-
-  // Parse worksheet XML to array of row objects
-  function parseSheet(xml, ss){
-    const rows=[];
-    // get dimension or parse all rows
-    const rowRe=/<row[^>]*>([\s\S]*?)<\/row>/g;
-    let rowM;
-    // first pass: get all cells to determine headers row
-    const allRows=[];
-    while((rowM=rowRe.exec(xml))!==null){
-      const rowXml=rowM[0];
-      const rAttr=rowXml.match(/\br="(\d+)"/);
-      const rIdx=rAttr?parseInt(rAttr[1]):allRows.length+1;
-      const cells={};
-      const cellRe=/<c\b([^>]*)>([\s\S]*?)<\/c>/g;
-      let cm;
-      while((cm=cellRe.exec(rowXml))!==null){
-        const attrs=cm[1]; const inner=cm[2];
-        const rRef=attrs.match(/\br="([A-Z]+\d+)"/);
-        if(!rRef) continue;
-        const ref=rRef[1];
-        const col=ref.replace(/\d+/,'');
-        const tAttr=attrs.match(/\bt="(\w+)"/);
-        const t=tAttr?tAttr[1]:'';
-        const vM=inner.match(/<v>([\s\S]*?)<\/v>/);
-        const v=vM?unescape_xml(vM[1]):'';
-        let val=v;
-        if(t==='s'){ val=ss[parseInt(v)]||''; }
-        else if(t==='inlineStr'){
-          const tM=inner.match(/<t>([\s\S]*?)<\/t>/);
-          val=tM?unescape_xml(tM[1]):'';
-        } else if(t==='b'){ val=v==='1'?'TRUE':'FALSE'; }
-        else if(v!=='') val=isNaN(v)?v:v; // keep as string for now
-        cells[col]=val;
-      }
-      allRows.push({r:rIdx,cells});
-    }
-    if(!allRows.length) return [];
-    // First row = headers
-    const headerRow=allRows[0];
-    const cols=Object.keys(headerRow.cells).sort((a,b)=>colNum(a)-colNum(b));
-    const headers=cols.map(c=>headerRow.cells[c]||c);
-    for(let i=1;i<allRows.length;i++){
-      const row={};
-      cols.forEach((c,j)=>{ row[headers[j]]=allRows[i].cells[c]??''; });
-      rows.push(row);
-    }
-    return rows;
-  }
-
-  function colNum(col){
-    let n=0;
-    for(let i=0;i<col.length;i++) n=n*26+(col.charCodeAt(i)-64);
-    return n;
-  }
-
-  // Parse workbook to get sheet names
-  function parseWorkbook(xml){
-    const sheets=[];
-    const re=/<sheet\b[^>]*name="([^"]*)"[^>]*\/>/g;
-    let m;
-    while((m=re.exec(xml))!==null) sheets.push(m[1]);
-    return sheets;
-  }
-
-  // ── PUBLIC API ──
-  function readXLSX(ab){
-    const files=unzip(ab);
-    // get shared strings
-    let ss=[];
-    const ssFile=files['xl/sharedStrings.xml'];
-    if(ssFile) ss=parseSharedStrings(xmlStr(ssFile));
-    // get first sheet
-    const wb=files['xl/workbook.xml'];
-    const sheetFile=files['xl/worksheets/sheet1.xml'];
-    if(!sheetFile) return [];
-    return parseSheet(xmlStr(sheetFile),ss);
-  }
-
-  function readCSV(text){
-    const lines=text.split(/\r?\n/).filter(l=>l.trim());
-    if(!lines.length) return [];
-    const headers=parseCSVLine(lines[0]);
-    return lines.slice(1).map(l=>{
-      const vals=parseCSVLine(l);
-      const row={};
-      headers.forEach((h,i)=>{ row[h]=vals[i]??''; });
-      return row;
-    });
-  }
-
-  function parseCSVLine(line){
-    const cols=[];
-    let cur='',inQ=false;
-    for(let i=0;i<line.length;i++){
-      const c=line[i];
-      if(c==='"'&&!inQ){inQ=true;}
-      else if(c==='"'&&inQ&&line[i+1]==='"'){cur+='"';i++;}
-      else if(c==='"'&&inQ){inQ=false;}
-      else if(c===','&&!inQ){cols.push(cur);cur='';}
-      else cur+=c;
-    }
-    cols.push(cur);
-    return cols;
-  }
-
-  // Write to CSV string
-  function toCSV(rows){
-    if(!rows.length) return '';
-    const headers=Object.keys(rows[0]);
-    const lines=[headers.map(h=>`"${String(h).replace(/"/g,'""')}"`).join(',')];
-    rows.forEach(r=>lines.push(headers.map(h=>`"${String(r[h]??'').replace(/"/g,'""')}"`).join(',')));
-    return lines.join('\n');
-  }
-
-  // Write to XLSX (simple, uses XML)
-  function toXLSX(rows){
-    if(!rows.length) return new Blob([]);
-    const headers=Object.keys(rows[0]);
-    // Build sheet XML
-    const enc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    let sharedStrings=[];
-    const ssMap={};
-    function getSSIdx(s){ if(ssMap[s]===undefined){ssMap[s]=sharedStrings.length;sharedStrings.push(s);} return ssMap[s]; }
-    function colLetter(n){ let l=''; while(n>0){l=String.fromCharCode(65+(n-1)%26)+l;n=Math.floor((n-1)/26);} return l; }
-    let sheetXML=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<sheetData>`;
-    // Header row
-    sheetXML+=`<row r="1">`;
-    headers.forEach((h,i)=>{
-      const col=colLetter(i+1);
-      const si=getSSIdx(String(h));
-      sheetXML+=`<c r="${col}1" t="s"><v>${si}</v></c>`;
-    });
-    sheetXML+=`</row>`;
-    rows.forEach((row,ri)=>{
-      sheetXML+=`<row r="${ri+2}">`;
-      headers.forEach((h,i)=>{
-        const col=colLetter(i+1);
-        const val=row[h]??'';
-        const str=String(val);
-        if(str===''){ return; }
-        if(!isNaN(val)&&val!==''){
-          sheetXML+=`<c r="${col}${ri+2}"><v>${enc(str)}</v></c>`;
-        } else {
-          const si=getSSIdx(str);
-          sheetXML+=`<c r="${col}${ri+2}" t="s"><v>${si}</v></c>`;
-        }
-      });
-      sheetXML+=`</row>`;
-    });
-    sheetXML+=`</sheetData></worksheet>`;
-
-    const ssXML=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${sharedStrings.length}" uniqueCount="${sharedStrings.length}">
-${sharedStrings.map(s=>`<si><t xml:space="preserve">${enc(s)}</t></si>`).join('')}
-</sst>`;
-
-    const wbXML=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-<sheets><sheet name="Cleaned" sheetId="1" r:id="rId1"/></sheets>
-</workbook>`;
-
-    const relsXML=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
-</Relationships>`;
-
-    const contentTypes=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-<Default Extension="xml" ContentType="application/xml"/>
-<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
-</Types>`;
-
-    // Simple ZIP builder
-    function zipIt(files){
-      const enc2=new TextEncoder();
-      const entries=[];
-      let offset=0;
-      const localHeaders=[];
-      for(const [name,content] of Object.entries(files)){
-        const nameBytes=enc2.encode(name);
-        const dataBytes=typeof content==='string'?enc2.encode(content):content;
-        const lh=new Uint8Array(30+nameBytes.length);
-        const dv=new DataView(lh.buffer);
-        dv.setUint32(0,0x504b0304,true); // sig
-        dv.setUint16(4,20,true); // version
-        dv.setUint16(6,0,true); // flags
-        dv.setUint16(8,0,true); // no compression
-        dv.setUint16(10,0,true); dv.setUint16(12,0,true); // time/date
-        // CRC32
-        const crc=crc32(dataBytes);
-        dv.setUint32(14,crc,true);
-        dv.setUint32(18,dataBytes.length,true);
-        dv.setUint32(22,dataBytes.length,true);
-        dv.setUint16(26,nameBytes.length,true);
-        dv.setUint16(28,0,true);
-        lh.set(nameBytes,30);
-        localHeaders.push({lh,data:dataBytes,name:nameBytes,offset,crc,size:dataBytes.length});
-        offset+=lh.length+dataBytes.length;
-        entries.push({lh,data:dataBytes});
-      }
-      // Central directory
-      const cdParts=[];
-      let cdSize=0;
-      localHeaders.forEach(({lh,name,offset,crc,size})=>{
-        const cd=new Uint8Array(46+name.length);
-        const dv=new DataView(cd.buffer);
-        dv.setUint32(0,0x504b0102,true);
-        dv.setUint16(4,20,true); dv.setUint16(6,20,true);
-        dv.setUint16(8,0,true); dv.setUint16(10,0,true);
-        dv.setUint16(12,0,true); dv.setUint16(14,0,true);
-        dv.setUint32(16,crc,true);
-        dv.setUint32(20,size,true); dv.setUint32(24,size,true);
-        dv.setUint16(28,name.length,true);
-        dv.setUint16(30,0,true); dv.setUint16(32,0,true);
-        dv.setUint16(34,0,true); dv.setUint16(36,0,true);
-        dv.setUint32(38,0,true); dv.setUint32(42,offset,true);
-        cd.set(name,46);
-        cdParts.push(cd); cdSize+=cd.length;
-      });
-      const eocd=new Uint8Array(22);
-      const edv=new DataView(eocd.buffer);
-      edv.setUint32(0,0x504b0506,true);
-      edv.setUint16(4,0,true); edv.setUint16(6,0,true);
-      edv.setUint16(8,localHeaders.length,true);
-      edv.setUint16(10,localHeaders.length,true);
-      edv.setUint32(12,cdSize,true);
-      edv.setUint32(16,offset,true);
-      edv.setUint16(20,0,true);
-      const parts=[...entries.flatMap(e=>[e.lh,e.data]),...cdParts,eocd];
-      const total=parts.reduce((s,p)=>s+p.length,0);
-      const out=new Uint8Array(total); let pos=0;
-      parts.forEach(p=>{out.set(p,pos);pos+=p.length;});
-      return out;
-    }
-
-    function crc32(buf){
-      let crc=0xffffffff;
-      for(let i=0;i<buf.length;i++){
-        crc^=buf[i];
-        for(let j=0;j<8;j++) crc=(crc&1)?(crc>>>1)^0xedb88320:(crc>>>1);
-      }
-      return (crc^0xffffffff)>>>0;
-    }
-
-    const zipData=zipIt({
-      '[Content_Types].xml':contentTypes,
-      '_rels/.rels':`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
-      'xl/workbook.xml':wbXML,
-      'xl/_rels/workbook.xml.rels':relsXML,
-      'xl/worksheets/sheet1.xml':sheetXML,
-      'xl/sharedStrings.xml':ssXML,
-    });
-    return new Blob([zipData],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-  }
-
-  return { readXLSX, readCSV, toCSV, toXLSX };
-})();
-</script>
-
 <style>
-  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-  body{background:#0f1117;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;color:#e8ecf5;min-height:100vh}
-  ::-webkit-scrollbar{width:6px;height:6px}
-  ::-webkit-scrollbar-track{background:#181c27}
-  ::-webkit-scrollbar-thumb{background:#2a3045;border-radius:3px}
-  select option{background:#1e2333;color:#e8ecf5}
-  input[type=radio]{accent-color:#4f8ef7}
-  .mono{font-family:'Courier New',Courier,monospace}
-  /* ── layout ── */
-  #header{background:#181c27;border-bottom:1px solid #2a3045;padding:14px 32px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:10}
-  #logo{font-family:'Courier New',monospace;font-size:13px;color:#4f8ef7;letter-spacing:2px;font-weight:700}
-  #fname{font-family:'Courier New',monospace;font-size:11px;color:#6b7590;border-left:1px solid #2a3045;padding-left:16px}
-  .steps{display:flex;align-items:center;gap:8px;margin-left:auto}
-  .step{font-family:'Courier New',monospace;font-size:11px;padding:3px 12px;border-radius:20px;border:1px solid #2a3045;color:#6b7590;transition:all .2s}
-  .step.active{background:#1d3461;color:#4f8ef7;border-color:#4f8ef7}
-  .sep{width:20px;height:1px;background:#2a3045}
-  #main{max-width:1100px;margin:0 auto;padding:32px 24px}
-  /* ── cards ── */
-  .card{background:#181c27;border:1px solid #2a3045;border-radius:10px;padding:16px 20px;margin-bottom:16px}
-  /* ── upload ── */
-  #drop{border:2px dashed #2a3045;border-radius:14px;padding:64px 32px;text-align:center;cursor:pointer;transition:all .2s;background:#181c27;max-width:540px;margin:80px auto}
-  #drop:hover,#drop.over{border-color:#4f8ef7;background:#1d346144}
-  #drop .icon{font-size:40px;margin-bottom:14px}
-  #drop .label{font-family:'Courier New',monospace;color:#4f8ef7;font-size:14px;margin-bottom:6px}
-  #drop .sub{color:#6b7590;font-size:12px}
-  /* ── buttons ── */
-  .btn{border:none;padding:8px 22px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s}
-  .btn-primary{background:#4f8ef7;color:#fff}
-  .btn-primary:hover{background:#6ba3ff}
-  .btn-primary:disabled{background:#2a3045;color:#6b7590;cursor:not-allowed}
-  .btn-ghost{background:transparent;border:1px solid #2a3045;color:#6b7590}
-  .btn-ghost:hover{border-color:#4f8ef7;color:#4f8ef7}
-  .btn-green{background:#3ecf8e;color:#0a1a12;font-weight:700}
-  .btn-green:hover{background:#5adba0}
-  /* ── table ── */
-  .col-table{border-radius:10px;overflow:hidden;border:1px solid #2a3045}
-  .col-table .thead{display:grid;grid-template-columns:2fr 2fr 2.5fr 80px;padding:10px 16px;border-bottom:1px solid #2a3045;background:#181c27}
-  .col-table .thead span{font-family:'Courier New',monospace;font-size:10px;color:#6b7590;letter-spacing:1px}
-  .col-body{max-height:420px;overflow-y:auto}
-  .col-row{display:grid;grid-template-columns:2fr 2fr 2.5fr 80px;gap:0;padding:9px 16px;align-items:center;border-bottom:1px solid #2a304522;transition:background .15s}
-  .col-row:last-child{border-bottom:none}
-  .col-row.dropped{background:#f76f6f11;opacity:.55}
-  .col-row:nth-child(even){background:#1e233355}
-  .col-row.dropped:nth-child(even){background:#f76f6f11}
-  .col-name{font-family:'Courier New',monospace;font-size:12px;color:#6b7590;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:8px}
-  .rename-input{background:transparent;border:1px solid #2a3045;color:#e8ecf5;border-radius:6px;padding:5px 8px;font-family:'Courier New',monospace;font-size:12px;outline:none;width:90%}
-  .rename-input:focus{border-color:#4f8ef7}
-  .rename-input:disabled{opacity:.4;cursor:not-allowed}
-  .tx-select{background:#1e2333;color:#e8ecf5;border:1px solid #2a3045;border-radius:6px;padding:5px 8px;font-family:'Courier New',monospace;font-size:12px;cursor:pointer;outline:none}
-  .badge{border-radius:4px;padding:2px 8px;font-size:11px;font-family:'Courier New',monospace;white-space:nowrap;border:1px solid transparent}
-  .drop-btn{border-radius:6px;padding:4px 10px;font-size:11px;font-family:'Courier New',monospace;cursor:pointer;border:1px solid transparent;transition:all .15s}
-  /* ── preview table ── */
-  .preview-wrap{overflow-x:auto;border-radius:10px;border:1px solid #2a3045}
-  .preview-table{width:100%;border-collapse:collapse;font-family:'Courier New',monospace;font-size:12px}
-  .preview-table th{padding:10px 14px;text-align:left;color:#4f8ef7;border-bottom:1px solid #2a3045;background:#181c27;white-space:nowrap;font-weight:600;letter-spacing:.5px}
-  .preview-table td{padding:8px 14px;border-bottom:1px solid #2a304522;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .preview-table tr:nth-child(even) td{background:#1e233344}
-  /* ── done ── */
-  .done-wrap{max-width:500px;margin:60px auto;text-align:center}
-  .stat-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:28px}
-  .stat-card{background:#181c27;border:1px solid #2a3045;border-radius:10px;padding:16px 12px}
-  .stat-val{font-family:'Courier New',monospace;font-size:24px;font-weight:700}
-  .stat-label{color:#6b7590;font-size:11px;margin-top:4px}
-  /* ── row filter ── */
-  .rf-row{display:flex;gap:16px;flex-wrap:wrap;align-items:center}
-  .rf-label{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px}
-  .filter-input{background:#1e2333;border:1px solid #2a3045;color:#e8ecf5;border-radius:6px;padding:5px 10px;font-family:'Courier New',monospace;font-size:12px;outline:none;width:160px}
-  .filter-input:focus{border-color:#4f8ef7}
-  /* ── quick apply ── */
-  .qa-btn{background:transparent;border-radius:6px;padding:3px 12px;cursor:pointer;font-family:'Courier New',monospace;font-size:11px;transition:all .15s}
-  /* ── section header ── */
-  .sec-label{font-family:'Courier New',monospace;font-size:10px;color:#4f8ef7;letter-spacing:1px;margin-bottom:10px}
-  /* ── page title ── */
-  .page-title{font-family:'Courier New',monospace;font-size:18px;font-weight:700;margin-bottom:4px}
-  .page-sub{color:#6b7590;font-size:13px;margin-bottom:20px}
-  .top-bar{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:20px}
-  .btn-row{display:flex;gap:10px}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#0f1117;font-family:'Segoe UI',Tahoma,sans-serif;color:#e8ecf5;min-height:100vh}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:#181c27}
+::-webkit-scrollbar-thumb{background:#2a3045;border-radius:3px}
+select option{background:#1e2333;color:#e8ecf5}
+input[type=radio]{accent-color:#4f8ef7}
+#header{background:#181c27;border-bottom:1px solid #2a3045;padding:14px 32px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:10}
+#logo{font-family:'Courier New',monospace;font-size:13px;color:#4f8ef7;letter-spacing:2px;font-weight:700}
+#fname{font-family:'Courier New',monospace;font-size:11px;color:#6b7590;border-left:1px solid #2a3045;padding-left:16px;display:none}
+.steps{display:flex;align-items:center;gap:8px;margin-left:auto}
+.step{font-family:'Courier New',monospace;font-size:11px;padding:3px 12px;border-radius:20px;border:1px solid #2a3045;color:#6b7590;transition:all .2s}
+.step.active{background:#1d3461;color:#4f8ef7;border-color:#4f8ef7}
+.sep{width:20px;height:1px;background:#2a3045}
+#main{max-width:1100px;margin:0 auto;padding:32px 24px}
+.card{background:#181c27;border:1px solid #2a3045;border-radius:10px;padding:16px 20px;margin-bottom:16px}
+#drop{border:2px dashed #2a3045;border-radius:14px;padding:64px 32px;text-align:center;cursor:pointer;transition:all .2s;background:#181c27;max-width:540px;margin:80px auto}
+#drop:hover,#drop.over{border-color:#4f8ef7;background:#1d346144}
+#drop .icon{font-size:40px;margin-bottom:14px}
+#drop .lbl{font-family:'Courier New',monospace;color:#4f8ef7;font-size:14px;margin-bottom:6px}
+#drop .sub{color:#6b7590;font-size:12px}
+.btn{border:none;padding:8px 22px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s}
+.btn-primary{background:#4f8ef7;color:#fff}.btn-primary:hover{background:#6ba3ff}
+.btn-primary:disabled{background:#2a3045;color:#6b7590;cursor:not-allowed}
+.btn-ghost{background:transparent;border:1px solid #2a3045;color:#6b7590}.btn-ghost:hover{border-color:#4f8ef7;color:#4f8ef7}
+.btn-green{background:#3ecf8e;color:#0a1a12;font-weight:700}.btn-green:hover{background:#5adba0}
+.btn-green:disabled{background:#2a3045;color:#6b7590;cursor:not-allowed}
+.col-table{border-radius:10px;overflow:hidden;border:1px solid #2a3045}
+.thead{display:grid;grid-template-columns:2fr 2fr 2.5fr 80px;padding:10px 16px;border-bottom:1px solid #2a3045;background:#181c27}
+.thead span{font-family:'Courier New',monospace;font-size:10px;color:#6b7590;letter-spacing:1px}
+.col-body{max-height:420px;overflow-y:auto}
+.col-row{display:grid;grid-template-columns:2fr 2fr 2.5fr 80px;padding:9px 16px;align-items:center;border-bottom:1px solid #2a304522;transition:background .15s}
+.col-row:last-child{border-bottom:none}
+.col-row.dropped{background:#f76f6f11;opacity:.55}
+.col-row:nth-child(even){background:#1e233355}
+.col-row.dropped:nth-child(even){background:#f76f6f11}
+.col-name{font-family:'Courier New',monospace;font-size:12px;color:#6b7590;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:8px}
+.ri{background:transparent;border:1px solid #2a3045;color:#e8ecf5;border-radius:6px;padding:5px 8px;font-family:'Courier New',monospace;font-size:12px;outline:none;width:90%}
+.ri:focus{border-color:#4f8ef7}.ri:disabled{opacity:.4;cursor:not-allowed}
+.tx{background:#1e2333;color:#e8ecf5;border:1px solid #2a3045;border-radius:6px;padding:5px 8px;font-family:'Courier New',monospace;font-size:12px;cursor:pointer;outline:none}
+.badge{border-radius:4px;padding:2px 8px;font-size:11px;font-family:'Courier New',monospace;white-space:nowrap;border:1px solid transparent}
+.dbtn{border-radius:6px;padding:4px 10px;font-size:11px;font-family:'Courier New',monospace;cursor:pointer;border:1px solid transparent;transition:all .15s}
+.preview-wrap{overflow-x:auto;border-radius:10px;border:1px solid #2a3045}
+.ptbl{width:100%;border-collapse:collapse;font-family:'Courier New',monospace;font-size:12px}
+.ptbl th{padding:10px 14px;text-align:left;color:#4f8ef7;border-bottom:1px solid #2a3045;background:#181c27;white-space:nowrap;font-weight:600}
+.ptbl td{padding:8px 14px;border-bottom:1px solid #2a304522;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ptbl tr:nth-child(even) td{background:#1e233344}
+.done-wrap{max-width:500px;margin:60px auto;text-align:center}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:28px}
+.stat-card{background:#181c27;border:1px solid #2a3045;border-radius:10px;padding:16px 12px}
+.stat-val{font-family:'Courier New',monospace;font-size:24px;font-weight:700}
+.stat-lbl{color:#6b7590;font-size:11px;margin-top:4px}
+.top-bar{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:20px}
+.btn-row{display:flex;gap:10px}
+.page-title{font-family:'Courier New',monospace;font-size:18px;font-weight:700;margin-bottom:4px}
+.page-sub{color:#6b7590;font-size:13px;margin-bottom:4px}
+.sec-lbl{font-family:'Courier New',monospace;font-size:10px;color:#4f8ef7;letter-spacing:1px;margin-bottom:10px}
+.rf-row{display:flex;gap:16px;flex-wrap:wrap;align-items:center}
+.rf-lbl{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px}
+.fi{background:#1e2333;border:1px solid #2a3045;color:#e8ecf5;border-radius:6px;padding:5px 10px;font-family:'Courier New',monospace;font-size:12px;outline:none;width:160px}
+.fi:focus{border-color:#4f8ef7}
+.qa-btn{background:transparent;border-radius:6px;padding:3px 12px;cursor:pointer;font-family:'Courier New',monospace;font-size:11px;transition:all .15s}
+#overlay{display:none;position:fixed;inset:0;background:#0f111799;z-index:100;align-items:center;justify-content:center;flex-direction:column;gap:16px}
+#overlay.show{display:flex}
+.spinner{width:40px;height:40px;border:3px solid #2a3045;border-top-color:#4f8ef7;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 </style>
-
 </head>
 <body>
 
+<div id="overlay">
+  <div class="spinner"></div>
+  <div style="font-family:'Courier New',monospace;color:#4f8ef7;font-size:13px" id="overlayMsg">Reading file…</div>
+</div>
+
 <div id="header">
   <div id="logo">XLSX CLEANER</div>
-  <div id="fname" style="display:none"></div>
+  <div id="fname"></div>
   <div class="steps">
-    <div class="step active" id="s1">1. upload</div>
-    <div class="sep"></div>
-    <div class="step" id="s2">2. configure</div>
-    <div class="sep"></div>
-    <div class="step" id="s3">3. preview</div>
-    <div class="sep"></div>
+    <div class="step active" id="s1">1. upload</div><div class="sep"></div>
+    <div class="step" id="s2">2. configure</div><div class="sep"></div>
+    <div class="step" id="s3">3. preview</div><div class="sep"></div>
     <div class="step" id="s4">4. done</div>
   </div>
 </div>
 
 <div id="main">
-
-  <!-- STEP 1: UPLOAD -->
-
   <div id="page-upload">
     <div id="drop">
       <div class="icon">📂</div>
-      <div class="label">Drop file here or click to browse</div>
+      <div class="lbl">Drop file here or click to browse</div>
       <div class="sub">.xlsx · .xls · .csv</div>
       <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none"/>
     </div>
   </div>
-
-  <!-- STEP 2: CONFIGURE -->
 
   <div id="page-configure" style="display:none">
     <div class="top-bar">
@@ -539,44 +113,31 @@ ${sharedStrings.map(s=>`<si><t xml:space="preserve">${enc(s)}</t></si>`).join(''
         <button class="btn btn-primary" onclick="runPreview()">Preview →</button>
       </div>
     </div>
-
-```
-<!-- Row filter -->
-<div class="card">
-  <div class="sec-label">ROW FILTER</div>
-  <div class="rf-row">
-    <label class="rf-label"><input type="radio" name="rf" value="all" checked onchange="setFilter(this.value)"> Keep all rows</label>
-    <label class="rf-label"><input type="radio" name="rf" value="nonempty" onchange="setFilter(this.value)"> Drop fully empty rows</label>
-    <label class="rf-label"><input type="radio" name="rf" value="custom" onchange="setFilter(this.value)"> Filter by value</label>
-    <div id="customFilter" style="display:none;display:none;gap:8px;align-items:center" class="rf-row">
-      <select id="filterCol" class="tx-select"></select>
-      <input type="text" id="filterVal" class="filter-input" placeholder="contains…"/>
+    <div class="card">
+      <div class="sec-lbl">ROW FILTER</div>
+      <div class="rf-row">
+        <label class="rf-lbl"><input type="radio" name="rf" value="all" checked onchange="rowFilter=this.value;toggleCustomFilter()"> Keep all rows</label>
+        <label class="rf-lbl"><input type="radio" name="rf" value="nonempty" onchange="rowFilter=this.value;toggleCustomFilter()"> Drop fully empty rows</label>
+        <label class="rf-lbl"><input type="radio" name="rf" value="custom" onchange="rowFilter=this.value;toggleCustomFilter()"> Filter by value</label>
+        <div id="customFilter" style="display:none;gap:8px;align-items:center" class="rf-row">
+          <select id="filterCol" class="tx"></select>
+          <input type="text" id="filterVal" class="fi" placeholder="contains…"/>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 20px">
+      <span style="font-family:'Courier New',monospace;font-size:10px;color:#6b7590;letter-spacing:1px">APPLY ALL:</span>
+      <button class="qa-btn" style="border:1px solid #3ecf8e44;color:#3ecf8e" onclick="applyAll('trim')">Trim spaces</button>
+      <button class="qa-btn" style="border:1px solid #4f8ef744;color:#4f8ef7" onclick="applyAll('date_iso')">→ Date ISO</button>
+      <button class="qa-btn" style="border:1px solid #f7a34f44;color:#f7a34f" onclick="applyAll('uppercase')">→ UPPERCASE</button>
+      <button class="qa-btn" style="border:1px solid #f7a34f44;color:#f7a34f" onclick="applyAll('lowercase')">→ lowercase</button>
+      <button class="qa-btn" style="border:1px solid #6b759044;color:#6b7590" onclick="applyAll('none')">No change</button>
+    </div>
+    <div class="col-table">
+      <div class="thead"><span>ORIGINAL COLUMN</span><span>RENAME TO</span><span>TRANSFORM</span><span></span></div>
+      <div class="col-body" id="colBody"></div>
     </div>
   </div>
-</div>
-
-<!-- Quick apply -->
-<div class="card" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 20px">
-  <span style="font-family:'Courier New',monospace;font-size:10px;color:#6b7590;letter-spacing:1px">APPLY ALL:</span>
-  <button class="qa-btn" style="border:1px solid #3ecf8e44;color:#3ecf8e" onclick="applyAll('trim')">Trim spaces</button>
-  <button class="qa-btn" style="border:1px solid #4f8ef744;color:#4f8ef7" onclick="applyAll('date_iso')">→ Date ISO</button>
-  <button class="qa-btn" style="border:1px solid #f7a34f44;color:#f7a34f" onclick="applyAll('uppercase')">→ UPPERCASE</button>
-  <button class="qa-btn" style="border:1px solid #f7a34f44;color:#f7a34f" onclick="applyAll('lowercase')">→ lowercase</button>
-  <button class="qa-btn" style="border:1px solid #6b759044;color:#6b7590" onclick="applyAll('none')">No change</button>
-</div>
-
-<!-- Column config table -->
-<div class="col-table">
-  <div class="thead">
-    <span>ORIGINAL COLUMN</span><span>RENAME TO</span><span>TRANSFORM</span><span></span>
-  </div>
-  <div class="col-body" id="colBody"></div>
-</div>
-```
-
-  </div>
-
-  <!-- STEP 3: PREVIEW -->
 
   <div id="page-preview" style="display:none">
     <div class="top-bar">
@@ -585,16 +146,12 @@ ${sharedStrings.map(s=>`<si><t xml:space="preserve">${enc(s)}</t></si>`).join(''
         <div class="page-sub" id="previewInfo"></div>
       </div>
       <div class="btn-row">
-        <button class="btn btn-ghost" onclick="goConfigure()">← Edit rules</button>
+        <button class="btn btn-ghost" onclick="showPage('configure')">← Edit rules</button>
         <button class="btn btn-green" id="runBtn" onclick="runFull()">✓ Clean &amp; Download</button>
       </div>
     </div>
-    <div class="preview-wrap">
-      <table class="preview-table" id="previewTable"></table>
-    </div>
+    <div class="preview-wrap"><table class="ptbl" id="previewTable"></table></div>
   </div>
-
-  <!-- STEP 4: DONE -->
 
   <div id="page-done" style="display:none">
     <div class="done-wrap">
@@ -605,164 +162,328 @@ ${sharedStrings.map(s=>`<si><t xml:space="preserve">${enc(s)}</t></si>`).join(''
       <button class="btn btn-primary" style="padding:10px 28px;font-size:14px" onclick="goUpload()">Clean another file</button>
     </div>
   </div>
-
 </div>
 
 <script>
-// ── STATE ──────────────────────────────────────────────────────────────────
-let rawData=[], headers=[], colConfig={}, fileName='';
-let rowFilter='all', filterCol='', filterVal='';
+// ═══════════════════════════════════════════════════════════════
+// XL — self-contained XLSX/CSV reader+writer (zero dependencies)
+// ═══════════════════════════════════════════════════════════════
+const XL = (function(){
+
+  // CRC32 table
+  const CRCT = new Uint32Array(256);
+  for(let i=0;i<256;i++){let c=i;for(let j=0;j<8;j++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);CRCT[i]=c;}
+  function crc32(buf){let c=0xFFFFFFFF;for(let i=0;i<buf.length;i++)c=CRCT[(c^buf[i])&0xFF]^(c>>>8);return(c^0xFFFFFFFF)>>>0;}
+
+  // ── Async ZIP reader using DecompressionStream ──────────────
+  async function unzip(ab){
+    const u8=new Uint8Array(ab), view=new DataView(ab), files={};
+    let eocd=-1;
+    for(let i=u8.length-22;i>=Math.max(0,u8.length-65558);i--){
+      if(u8[i]===0x50&&u8[i+1]===0x4B&&u8[i+2]===0x05&&u8[i+3]===0x06){eocd=i;break;}
+    }
+    if(eocd<0) return files;
+    const cdOff=view.getUint32(eocd+16,true), cdCount=view.getUint16(eocd+8,true);
+    const td=new TextDecoder('utf-8');
+    let pos=cdOff;
+    for(let e=0;e<cdCount;e++){
+      if(view.getUint32(pos,true)!==0x02014B50) break;
+      const fnLen=view.getUint16(pos+28,true), exLen=view.getUint16(pos+30,true), cmtLen=view.getUint16(pos+32,true);
+      const lhOff=view.getUint32(pos+42,true);
+      const fname=td.decode(u8.slice(pos+46,pos+46+fnLen));
+      pos+=46+fnLen+exLen+cmtLen;
+      const lfnLen=view.getUint16(lhOff+26,true), lexLen=view.getUint16(lhOff+28,true);
+      const method=view.getUint16(lhOff+8,true), compSz=view.getUint32(lhOff+18,true);
+      const dStart=lhOff+30+lfnLen+lexLen;
+      const compData=u8.slice(dStart,dStart+compSz);
+      if(method===0){
+        files[fname]=compData;
+      } else if(method===8){
+        try{
+          const ds=new DecompressionStream('deflate-raw');
+          const w=ds.writable.getWriter(), r=ds.readable.getReader();
+          w.write(compData); w.close();
+          const chunks=[]; let total=0;
+          while(true){const{done,value}=await r.read();if(done)break;chunks.push(value);total+=value.length;}
+          const out=new Uint8Array(total); let off=0;
+          for(const ch of chunks){out.set(ch,off);off+=ch.length;}
+          files[fname]=out;
+        }catch(e){files[fname]=new Uint8Array(0);}
+      }
+    }
+    return files;
+  }
+
+  // ── XML helpers ─────────────────────────────────────────────
+  const TD=new TextDecoder('utf-8',{fatal:false});
+  const xmlStr=u8=>TD.decode(u8);
+  const unescXML=s=>s.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&#(\d+);/g,(_,n)=>String.fromCharCode(+n));
+
+  // ── Shared strings ──────────────────────────────────────────
+  function parseSST(x){
+    const ss=[],re=/<si\b[^>]*>([\s\S]*?)<\/si>/g;
+    let m;
+    while((m=re.exec(x))!==null){
+      const ts=[],tr=/<t(?:[^>]*)>([\s\S]*?)<\/t>/g;let tm;
+      while((tm=tr.exec(m[1]))!==null)ts.push(unescXML(tm[1]));
+      ss.push(ts.join(''));
+    }
+    return ss;
+  }
+
+  // ── Col letter → index ──────────────────────────────────────
+  function colNum(c){let n=0;for(let i=0;i<c.length;i++)n=n*26+(c.charCodeAt(i)-64);return n;}
+
+  // ── Sheet XML → row objects ─────────────────────────────────
+  function parseSheet(x,ss){
+    const rowRe=/<row\b[^>]*>([\s\S]*?)<\/row>/g;
+    const all=[];let rm;
+    while((rm=rowRe.exec(x))!==null){
+      const cells={},cellRe=/<c\b([^>]*)>([\s\S]*?)<\/c>/g;let cm;
+      while((cm=cellRe.exec(rm[1]))!==null){
+        const attrs=cm[1],inner=cm[2];
+        const rM=attrs.match(/\br="([A-Z]+\d+)"/);if(!rM)continue;
+        const col=rM[1].replace(/\d+/,'');
+        const t=(attrs.match(/\bt="(\w+)"/)??[])[1]??'';
+        const v=unescXML((inner.match(/<v>([\s\S]*?)<\/v>/)??['',''])[1]);
+        let val=v;
+        if(t==='s')val=ss[parseInt(v)]??'';
+        else if(t==='inlineStr')val=unescXML((inner.match(/<t>([\s\S]*?)<\/t>/)??['',''])[1]);
+        else if(t==='b')val=v==='1'?'TRUE':'FALSE';
+        cells[col]=val;
+      }
+      all.push(cells);
+    }
+    if(!all.length)return[];
+    const hCells=all[0];
+    const cols=Object.keys(hCells).sort((a,b)=>colNum(a)-colNum(b));
+    const hdrs=cols.map(c=>hCells[c]||c);
+    const rows=[];
+    for(let i=1;i<all.length;i++){
+      const row={};cols.forEach((c,j)=>{row[hdrs[j]]=all[i][c]??'';});rows.push(row);
+    }
+    return rows;
+  }
+
+  // ── CSV ─────────────────────────────────────────────────────
+  function csvLine(l){
+    const cols=[];let cur='',inQ=false;
+    for(let i=0;i<l.length;i++){
+      const c=l[i];
+      if(c==='"'&&!inQ)inQ=true;
+      else if(c==='"'&&inQ&&l[i+1]==='"'){cur+='"';i++;}
+      else if(c==='"'&&inQ)inQ=false;
+      else if(c===','&&!inQ){cols.push(cur);cur='';}
+      else cur+=c;
+    }
+    cols.push(cur);return cols;
+  }
+  function readCSV(text){
+    const lines=text.split(/\r?\n/).filter(l=>l.trim());
+    if(!lines.length)return[];
+    const hdrs=csvLine(lines[0]);
+    return lines.slice(1).map(l=>{const v=csvLine(l);const r={};hdrs.forEach((h,i)=>{r[h]=v[i]??'';});return r;});
+  }
+
+  // ── Public read ─────────────────────────────────────────────
+  async function readXLSX(ab){
+    const files=await unzip(ab);
+    const ss=files['xl/sharedStrings.xml']?parseSST(xmlStr(files['xl/sharedStrings.xml'])):[];
+    const shFile=files['xl/worksheets/sheet1.xml'];
+    if(!shFile)throw new Error('No worksheet found in file');
+    return parseSheet(xmlStr(shFile),ss);
+  }
+
+  // ── CSV writer ───────────────────────────────────────────────
+  function toCSV(rows){
+    if(!rows.length)return'';
+    const h=Object.keys(rows[0]);
+    const q=v=>`"${String(v??'').replace(/"/g,'""')}"`;
+    return[h.map(q).join(','),...rows.map(r=>h.map(k=>q(r[k])).join(','))].join('\n');
+  }
+
+  // ── XLSX writer ──────────────────────────────────────────────
+  function toXLSX(rows){
+    const TE=new TextEncoder();
+    const h=rows.length?Object.keys(rows[0]):[];
+    const ex=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const cl=n=>{let l='';while(n>0){l=String.fromCharCode(65+(n-1)%26)+l;n=Math.floor((n-1)/26);}return l;}
+    const ssA=[],ssM={};
+    const si=s=>{if(ssM[s]===undefined){ssM[s]=ssA.length;ssA.push(s);}return ssM[s];};
+
+    let shXML=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>`;
+    shXML+=`<row r="1">${h.map((hd,i)=>`<c r="${cl(i+1)}1" t="s"><v>${si(String(hd))}</v></c>`).join('')}</row>`;
+    rows.forEach((row,ri)=>{
+      const cells=h.map((hd,i)=>{
+        const v=row[hd]??'',sv=String(v);
+        if(sv==='')return'';
+        if(!isNaN(v)&&sv.trim()!=='')return`<c r="${cl(i+1)}${ri+2}"><v>${ex(sv)}</v></c>`;
+        return`<c r="${cl(i+1)}${ri+2}" t="s"><v>${si(sv)}</v></c>`;
+      }).join('');
+      if(cells)shXML+=`<row r="${ri+2}">${cells}</row>`;
+    });
+    shXML+=`</sheetData></worksheet>`;
+
+    const ssXML=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${ssA.length}" uniqueCount="${ssA.length}">${ssA.map(s=>`<si><t xml:space="preserve">${ex(s)}</t></si>`).join('')}</sst>`;
+    const wbXML=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Cleaned" sheetId="1" r:id="rId1"/></sheets></workbook>`;
+    const wbR=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/></Relationships>`;
+    const dotR=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
+    const ct=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/></Types>`;
+
+    const fm={'[Content_Types].xml':ct,'_rels/.rels':dotR,'xl/workbook.xml':wbXML,'xl/_rels/workbook.xml.rels':wbR,'xl/worksheets/sheet1.xml':shXML,'xl/sharedStrings.xml':ssXML};
+    const entries=[],cdParts=[];let offset=0;
+    for(const[name,content]of Object.entries(fm)){
+      const nb=TE.encode(name),db=TE.encode(content),crc=crc32(db);
+      const lh=new Uint8Array(30+nb.length);const dv=new DataView(lh.buffer);
+      dv.setUint32(0,0x04034B50,true);dv.setUint16(4,20,true);dv.setUint32(14,crc,true);
+      dv.setUint32(18,db.length,true);dv.setUint32(22,db.length,true);dv.setUint16(26,nb.length,true);lh.set(nb,30);
+      const cd=new Uint8Array(46+nb.length);const cdv=new DataView(cd.buffer);
+      cdv.setUint32(0,0x02014B50,true);cdv.setUint16(4,20,true);cdv.setUint16(6,20,true);
+      cdv.setUint32(16,crc,true);cdv.setUint32(20,db.length,true);cdv.setUint32(24,db.length,true);
+      cdv.setUint16(28,nb.length,true);cdv.setUint32(42,offset,true);cd.set(nb,46);
+      entries.push(lh,db);cdParts.push(cd);offset+=lh.length+db.length;
+    }
+    const cdSz=cdParts.reduce((s,p)=>s+p.length,0);
+    const eocd=new Uint8Array(22);const ev=new DataView(eocd.buffer);
+    ev.setUint32(0,0x06054B50,true);ev.setUint16(8,cdParts.length,true);ev.setUint16(10,cdParts.length,true);
+    ev.setUint32(12,cdSz,true);ev.setUint32(16,offset,true);
+    const all=[...entries,...cdParts,eocd];
+    const total=all.reduce((s,p)=>s+p.length,0);
+    const out=new Uint8Array(total);let pos=0;
+    for(const p of all){out.set(p,pos);pos+=p.length;}
+    return new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  }
+
+  return{readXLSX,readCSV,toCSV,toXLSX};
+})();
+
+// ═══════════════════════════════════════════════════════════════
+// APP STATE & HELPERS
+// ═══════════════════════════════════════════════════════════════
+let rawData=[],headers=[],colConfig={},fileName='',rowFilter='all';
 
 const TRANSFORMS=[
-  {v:'none',        l:'No change',            c:'#6b7590'},
-  {v:'trim',        l:'Trim spaces',          c:'#3ecf8e'},
-  {v:'date_iso',    l:'→ Date (YYYY-MM-DD)',  c:'#4f8ef7'},
-  {v:'date_us',     l:'→ Date (MM/DD/YYYY)',  c:'#4f8ef7'},
-  {v:'uppercase',   l:'→ UPPERCASE',          c:'#f7a34f'},
-  {v:'lowercase',   l:'→ lowercase',          c:'#f7a34f'},
-  {v:'titlecase',   l:'→ Title Case',         c:'#f7a34f'},
-  {v:'number',      l:'→ Number',             c:'#a78bfa'},
-  {v:'remove_special',l:'Remove special chars',c:'#f76f6f'},
-  {v:'snake_case',  l:'→ snake_case (rename)',c:'#3ecf8e'},
-  {v:'drop_col',    l:'Drop column',          c:'#f76f6f'},
+  {v:'none',           l:'No change',            c:'#6b7590'},
+  {v:'trim',           l:'Trim spaces',          c:'#3ecf8e'},
+  {v:'date_iso',       l:'→ Date (YYYY-MM-DD)',  c:'#4f8ef7'},
+  {v:'date_us',        l:'→ Date (MM/DD/YYYY)',  c:'#4f8ef7'},
+  {v:'uppercase',      l:'→ UPPERCASE',          c:'#f7a34f'},
+  {v:'lowercase',      l:'→ lowercase',          c:'#f7a34f'},
+  {v:'titlecase',      l:'→ Title Case',         c:'#f7a34f'},
+  {v:'number',         l:'→ Number',             c:'#a78bfa'},
+  {v:'remove_special', l:'Remove special chars', c:'#f76f6f'},
+  {v:'snake_case',     l:'→ snake_case (rename)',c:'#3ecf8e'},
+  {v:'drop_col',       l:'Drop column',          c:'#f76f6f'},
 ];
 
-// ── NAV ────────────────────────────────────────────────────────────────────
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function showPage(p){
-  ['upload','configure','preview','done'].forEach(x=>{
-    document.getElementById('page-'+x).style.display= x===p?'block':'none';
-    const s=document.getElementById('s'+((['upload','configure','preview','done'].indexOf(x)+1)));
-    if(s) s.classList.toggle('active',x===p);
+  ['upload','configure','preview','done'].forEach((x,i)=>{
+    document.getElementById('page-'+x).style.display=x===p?'block':'none';
+    document.getElementById('s'+(i+1)).classList.toggle('active',x===p);
   });
 }
-function goUpload(){ rawData=[];headers=[];colConfig={};fileName=''; document.getElementById('fname').style.display='none'; showPage('upload'); }
-function goConfigure(){ showPage('configure'); }
-function goPreview(){ showPage('preview'); }
+function showOverlay(msg){document.getElementById('overlayMsg').textContent=msg||'Processing…';document.getElementById('overlay').classList.add('show');}
+function hideOverlay(){document.getElementById('overlay').classList.remove('show');}
+function dlBlob(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);}
 
-// ── FILE LOAD ──────────────────────────────────────────────────────────────
-const drop=document.getElementById('drop');
-const fileInput=document.getElementById('fileInput');
-drop.addEventListener('click',()=>fileInput.click());
+// ── File load ────────────────────────────────────────────────────
+const drop=document.getElementById('drop'),fi=document.getElementById('fileInput');
+drop.addEventListener('click',()=>fi.click());
 drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('over');});
 drop.addEventListener('dragleave',()=>drop.classList.remove('over'));
 drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('over');loadFile(e.dataTransfer.files[0]);});
-fileInput.addEventListener('change',e=>loadFile(e.target.files[0]));
+fi.addEventListener('change',e=>loadFile(e.target.files[0]));
 
-function loadFile(file){
-  if(!file) return;
+async function loadFile(file){
+  if(!file)return;
   fileName=file.name;
   const ext=file.name.split('.').pop().toLowerCase();
-  const reader=new FileReader();
-  reader.onload=e=>{
-    try{
-      if(ext==='csv'){
-        rawData=XL.readCSV(e.target.result);
-      } else {
-        rawData=XL.readXLSX(e.target.result);
-      }
-      if(!rawData.length){alert('No data found in file.');return;}
-      headers=Object.keys(rawData[0]);
-      colConfig={};
-      headers.forEach(h=>{colConfig[h]={transform:'trim',rename:h};});
-      filterCol=headers[0]||'';
-      setupConfigure();
-      showPage('configure');
-      const fn=document.getElementById('fname');
-      fn.textContent=fileName; fn.style.display='block';
-    }catch(err){
-      alert('Could not read file: '+err.message);
+  showOverlay('Reading file…');
+  try{
+    if(ext==='csv'){
+      rawData=XL.readCSV(await file.text());
+    }else{
+      rawData=await XL.readXLSX(await file.arrayBuffer());
     }
-  };
-  if(ext==='csv') reader.readAsText(file);
-  else reader.readAsArrayBuffer(file);
+    if(!rawData.length){hideOverlay();alert('No data found in the file.');return;}
+    headers=Object.keys(rawData[0]);
+    colConfig={};
+    headers.forEach(h=>{colConfig[h]={transform:'trim',rename:h};});
+    document.getElementById('filterCol').innerHTML=headers.map(h=>`<option value="${esc(h)}">${esc(h)}</option>`).join('');
+    document.getElementById('fileInfo').textContent=`${rawData.length.toLocaleString()} rows · ${headers.length} columns`;
+    const fn=document.getElementById('fname');fn.textContent=fileName;fn.style.display='block';
+    renderColTable();
+    hideOverlay();
+    showPage('configure');
+  }catch(err){
+    hideOverlay();
+    alert('Could not read file:\n'+err.message);
+    console.error(err);
+  }
 }
 
-// ── CONFIGURE ─────────────────────────────────────────────────────────────
-function setupConfigure(){
-  document.getElementById('fileInfo').textContent=`${rawData.length.toLocaleString()} rows · ${headers.length} columns`;
-  // filter col select
-  const fc=document.getElementById('filterCol');
-  fc.innerHTML=headers.map(h=>`<option value="${esc(h)}">${esc(h)}</option>`).join('');
-  renderColTable();
-}
+function goUpload(){rawData=[];headers=[];colConfig={};fileName='';document.getElementById('fname').style.display='none';fi.value='';showPage('upload');}
+function toggleCustomFilter(){document.getElementById('customFilter').style.display=rowFilter==='custom'?'flex':'none';}
 
+// ── Column table ─────────────────────────────────────────────────
 function renderColTable(){
-  const body=document.getElementById('colBody');
-  body.innerHTML=headers.map((col,i)=>{
+  document.getElementById('colBody').innerHTML=headers.map((col,i)=>{
     const cfg=colConfig[col]||{transform:'none',rename:col};
     const isDrop=cfg.transform==='drop_col';
-    const opts=TRANSFORMS.map(t=>`<option value="${t.v}"${cfg.transform===t.v?' selected':''}>${t.l}</option>`).join('');
     const tx=TRANSFORMS.find(t=>t.v===cfg.transform)||TRANSFORMS[0];
-    return `<div class="col-row${isDrop?' dropped':''}" id="row-${i}">
+    const opts=TRANSFORMS.map(t=>`<option value="${t.v}"${cfg.transform===t.v?' selected':''}>${t.l}</option>`).join('');
+    return`<div class="col-row${isDrop?' dropped':''}">
       <div class="col-name" title="${esc(col)}">${esc(col)}</div>
-      <input class="rename-input" value="${esc(cfg.rename||col)}" ${isDrop?'disabled':''} oninput="updateRename('${escJs(col)}',this.value)" />
+      <input class="ri" value="${esc(cfg.rename||col)}" ${isDrop?'disabled':''} oninput="colConfig[headers[${i}]].rename=this.value"/>
       <div style="display:flex;align-items:center;gap:8px">
-        <select class="tx-select" onchange="updateTransform('${escJs(col)}',this.value)">${opts}</select>
+        <select class="tx" onchange="updateTransform(${i},this.value)">${opts}</select>
         <span class="badge" style="background:${tx.c}22;color:${tx.c};border-color:${tx.c}44">${tx.l}</span>
       </div>
-      <button class="drop-btn" style="background:${isDrop?'#3ecf8e22':'#f76f6f22'};color:${isDrop?'#3ecf8e':'#f76f6f'};border-color:${isDrop?'#3ecf8e44':'#f76f6f44'}"
-        onclick="toggleDrop('${escJs(col)}',${i})">${isDrop?'Restore':'Drop'}</button>
+      <button class="dbtn" style="background:${isDrop?'#3ecf8e22':'#f76f6f22'};color:${isDrop?'#3ecf8e':'#f76f6f'};border-color:${isDrop?'#3ecf8e44':'#f76f6f44'}" onclick="toggleDrop(${i})">${isDrop?'Restore':'Drop'}</button>
     </div>`;
   }).join('');
 }
+function updateTransform(i,val){colConfig[headers[i]].transform=val;renderColTable();}
+function toggleDrop(i){const col=headers[i];colConfig[col].transform=colConfig[col].transform==='drop_col'?'none':'drop_col';renderColTable();}
+function applyAll(t){headers.forEach(h=>{colConfig[h].transform=t;});renderColTable();}
 
-function updateRename(col,val){ if(colConfig[col]) colConfig[col].rename=val; }
-function updateTransform(col,val){
-  if(!colConfig[col]) return;
-  colConfig[col].transform=val;
-  renderColTable();
-}
-function toggleDrop(col,i){
-  if(!colConfig[col]) return;
-  colConfig[col].transform = colConfig[col].transform==='drop_col'?'none':'drop_col';
-  renderColTable();
-}
-function applyAll(t){
-  headers.forEach(h=>{ if(colConfig[h]) colConfig[h].transform=t; });
-  renderColTable();
-}
-function setFilter(v){
-  rowFilter=v;
-  const cf=document.getElementById('customFilter');
-  cf.style.display=v==='custom'?'flex':'none';
-}
-
-// ── TRANSFORMS ────────────────────────────────────────────────────────────
-function toTitleCase(s){ return s.replace(/\w\S*/g,t=>t[0].toUpperCase()+t.slice(1).toLowerCase()); }
-function toSnakeCase(s){ return s.trim().toLowerCase().replace(/[\s\-\.\/\\]+/g,'_').replace(/[^a-z0-9_]/g,'').replace(/^_+|_+$/g,''); }
-function parseDate(val){
-  if(!val&&val!==0) return null;
-  if(typeof val==='number'){ const d=new Date(Math.round((val-25569)*86400*1000)); return isNaN(d)?null:d; }
-  const d=new Date(val); return isNaN(d)?null:d;
+// ── Transforms ───────────────────────────────────────────────────
+function toTitleCase(s){return s.replace(/\w\S*/g,t=>t[0].toUpperCase()+t.slice(1).toLowerCase());}
+function toSnakeCase(s){return s.trim().toLowerCase().replace(/[\s\-\.\/\\]+/g,'_').replace(/[^a-z0-9_]/g,'').replace(/^_+|_+$/g,'');}
+function parseDate(v){
+  if(v===null||v===undefined||v==='')return null;
+  if(typeof v==='number'){const d=new Date(Math.round((v-25569)*86400*1000));return isNaN(d.getTime())?null:d;}
+  const d=new Date(v);return isNaN(d.getTime())?null:d;
 }
 function applyTransform(val,type){
   const s=val===null||val===undefined?'':String(val);
   switch(type){
-    case 'trim': return s.trim();
-    case 'date_iso':{ const d=parseDate(val); return d?d.toISOString().slice(0,10):s.trim(); }
-    case 'date_us':{ const d=parseDate(val); return d?`${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}/${d.getFullYear()}`:s.trim(); }
-    case 'uppercase': return s.trim().toUpperCase();
-    case 'lowercase': return s.trim().toLowerCase();
-    case 'titlecase': return toTitleCase(s.trim());
-    case 'number':{ const n=parseFloat(s.replace(/[^0-9.\-]/g,'')); return isNaN(n)?s:n; }
-    case 'remove_special': return s.replace(/[^a-zA-Z0-9\s\-_.,]/g,'').trim();
-    case 'snake_case': return toSnakeCase(s);
-    default: return val;
+    case'trim':return s.trim();
+    case'date_iso':{const d=parseDate(val);return d?d.toISOString().slice(0,10):s.trim();}
+    case'date_us':{const d=parseDate(val);return d?`${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}/${d.getFullYear()}`:s.trim();}
+    case'uppercase':return s.trim().toUpperCase();
+    case'lowercase':return s.trim().toLowerCase();
+    case'titlecase':return toTitleCase(s.trim());
+    case'number':{const n=parseFloat(s.replace(/[^0-9.\-]/g,''));return isNaN(n)?s:n;}
+    case'remove_special':return s.replace(/[^a-zA-Z0-9\s\-_.,]/g,'').trim();
+    case'snake_case':return toSnakeCase(s);
+    default:return val;
   }
 }
 
 function applyRules(data){
-  const fv=document.getElementById('filterVal').value;
   const fc=document.getElementById('filterCol').value;
+  const fv=document.getElementById('filterVal').value;
   const active=headers.filter(h=>colConfig[h]?.transform!=='drop_col');
   return data.filter(row=>{
-    if(rowFilter==='nonempty') return active.some(c=>String(row[c]??'').trim()!=='');
-    if(rowFilter==='custom'&&fc&&fv) return String(row[fc]??'').toLowerCase().includes(fv.toLowerCase());
+    if(rowFilter==='nonempty')return active.some(c=>String(row[c]??'').trim()!=='');
+    if(rowFilter==='custom'&&fc&&fv)return String(row[fc]??'').toLowerCase().includes(fv.toLowerCase());
     return true;
   }).map(row=>{
     const out={};
     active.forEach(col=>{
-      const {transform,rename}=colConfig[col]||{};
+      const{transform,rename}=colConfig[col]||{};
       const key=(rename&&rename.trim())?rename.trim():col;
       out[key]=transform&&transform!=='none'?applyTransform(row[col],transform):row[col];
     });
@@ -770,53 +491,44 @@ function applyRules(data){
   });
 }
 
-// ── PREVIEW ───────────────────────────────────────────────────────────────
+// ── Preview & Run ────────────────────────────────────────────────
 function runPreview(){
   const sample=applyRules(rawData.slice(0,10));
-  if(!sample.length){alert('No rows match current filter.');return;}
+  if(!sample.length){alert('No rows match the current filter.');return;}
   const ph=Object.keys(sample[0]);
   document.getElementById('previewInfo').textContent=`${ph.length} columns after cleanup`;
   document.getElementById('runBtn').textContent=`✓ Clean & Download (${rawData.length.toLocaleString()} rows)`;
-  const tbl=document.getElementById('previewTable');
-  tbl.innerHTML=`<thead><tr>${ph.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead>
-    <tbody>${sample.map(r=>`<tr>${ph.map(h=>`<td>${esc(String(r[h]??''))}</td>`).join('')}</tr>`).join('')}</tbody>`;
+  document.getElementById('previewTable').innerHTML=
+    `<thead><tr>${ph.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead>
+     <tbody>${sample.map(r=>`<tr>${ph.map(h=>`<td title="${esc(String(r[h]??''))}">${esc(String(r[h]??''))}</td>`).join('')}</tr>`).join('')}</tbody>`;
   showPage('preview');
 }
 
-// ── FULL RUN ──────────────────────────────────────────────────────────────
 function runFull(){
   const btn=document.getElementById('runBtn');
-  btn.disabled=true; btn.textContent='Processing…';
+  btn.disabled=true;btn.textContent='Processing…';
+  showOverlay('Cleaning data…');
   setTimeout(()=>{
-    const cleaned=applyRules(rawData);
-    const droppedCols=headers.filter(h=>colConfig[h]?.transform==='drop_col').length;
-    // Download XLSX
-    const xlBlob=XL.toXLSX(cleaned);
-    dlBlob(xlBlob, fileName.replace(/\.[^.]+$/,'')+'_cleaned.xlsx');
-    // Download CSV
-    const csvBlob=new Blob([XL.toCSV(cleaned)],{type:'text/csv'});
-    dlBlob(csvBlob, fileName.replace(/\.[^.]+$/,'')+'_cleaned.csv');
-    // Stats
-    const sg=document.getElementById('statGrid');
-    sg.innerHTML=[
-      {l:'Rows cleaned',v:cleaned.length.toLocaleString(),c:'#3ecf8e'},
-      {l:'Rows dropped',v:(rawData.length-cleaned.length).toLocaleString(),c:rawData.length-cleaned.length?'#f7a34f':'#6b7590'},
-      {l:'Cols dropped',v:droppedCols.toString(),c:droppedCols?'#f76f6f':'#6b7590'},
-    ].map(s=>`<div class="stat-card"><div class="stat-val" style="color:${s.c}">${s.v}</div><div class="stat-label">${s.l}</div></div>`).join('');
-    showPage('done');
+    try{
+      const cleaned=applyRules(rawData);
+      const droppedCols=headers.filter(h=>colConfig[h]?.transform==='drop_col').length;
+      dlBlob(new Blob([XL.toCSV(cleaned)],{type:'text/csv'}),fileName.replace(/\.[^.]+$/,'')+'_cleaned.csv');
+      dlBlob(XL.toXLSX(cleaned),fileName.replace(/\.[^.]+$/,'')+'_cleaned.xlsx');
+      document.getElementById('statGrid').innerHTML=[
+        {l:'Rows cleaned',v:cleaned.length.toLocaleString(),c:'#3ecf8e'},
+        {l:'Rows dropped',v:(rawData.length-cleaned.length).toString(),c:rawData.length-cleaned.length?'#f7a34f':'#6b7590'},
+        {l:'Cols dropped',v:droppedCols.toString(),c:droppedCols?'#f76f6f':'#6b7590'},
+      ].map(s=>`<div class="stat-card"><div class="stat-val" style="color:${s.c}">${s.v}</div><div class="stat-lbl">${s.l}</div></div>`).join('');
+      hideOverlay();
+      showPage('done');
+    }catch(err){
+      hideOverlay();
+      btn.disabled=false;btn.textContent='✓ Clean & Download';
+      alert('Error during processing:\n'+err.message);
+      console.error(err);
+    }
   },50);
 }
-
-function dlBlob(blob,name){
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download=name; a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-}
-
-// ── HELPERS ───────────────────────────────────────────────────────────────
-function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function escJs(s){ return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 </script>
 
 </body>
