@@ -4,464 +4,466 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Excel Cleaner</title>
+<title>Column Mapper</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{background:#0f1117;font-family:'Segoe UI',Tahoma,sans-serif;color:#e8ecf5;min-height:100vh}
-::-webkit-scrollbar{width:6px;height:6px}
-::-webkit-scrollbar-track{background:#181c27}
-::-webkit-scrollbar-thumb{background:#2a3045;border-radius:3px}
-select option{background:#1e2333;color:#e8ecf5}
-input[type=radio]{accent-color:#4f8ef7}
-#header{background:#181c27;border-bottom:1px solid #2a3045;padding:14px 32px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:10}
-#logo{font-family:'Courier New',monospace;font-size:13px;color:#4f8ef7;letter-spacing:2px;font-weight:700}
-#fname{font-family:'Courier New',monospace;font-size:11px;color:#6b7590;border-left:1px solid #2a3045;padding-left:16px;display:none}
-.steps{display:flex;align-items:center;gap:8px;margin-left:auto}
-.step{font-family:'Courier New',monospace;font-size:11px;padding:3px 12px;border-radius:20px;border:1px solid #2a3045;color:#6b7590;transition:all .2s}
-.step.active{background:#1d3461;color:#4f8ef7;border-color:#4f8ef7}
-.sep{width:20px;height:1px;background:#2a3045}
-#main{max-width:1100px;margin:0 auto;padding:32px 24px}
-.card{background:#181c27;border:1px solid #2a3045;border-radius:10px;padding:16px 20px;margin-bottom:16px}
-#drop{border:2px dashed #2a3045;border-radius:14px;padding:64px 32px;text-align:center;cursor:pointer;transition:all .2s;background:#181c27;max-width:540px;margin:80px auto}
-#drop:hover,#drop.over{border-color:#4f8ef7;background:#1d346144}
-#drop .icon{font-size:40px;margin-bottom:14px}
-#drop .lbl{font-family:'Courier New',monospace;color:#4f8ef7;font-size:14px;margin-bottom:6px}
-#drop .sub{color:#6b7590;font-size:12px}
-.btn{border:none;padding:8px 22px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s}
-.btn-primary{background:#4f8ef7;color:#fff}.btn-primary:hover{background:#6ba3ff}
-.btn-primary:disabled{background:#2a3045;color:#6b7590;cursor:not-allowed}
-.btn-ghost{background:transparent;border:1px solid #2a3045;color:#6b7590}.btn-ghost:hover{border-color:#4f8ef7;color:#4f8ef7}
-.btn-green{background:#3ecf8e;color:#0a1a12;font-weight:700}.btn-green:hover{background:#5adba0}
-.btn-green:disabled{background:#2a3045;color:#6b7590;cursor:not-allowed}
-.col-table{border-radius:10px;overflow:hidden;border:1px solid #2a3045}
-.thead{display:grid;grid-template-columns:2fr 2fr 2.5fr 80px;padding:10px 16px;border-bottom:1px solid #2a3045;background:#181c27}
-.thead span{font-family:'Courier New',monospace;font-size:10px;color:#6b7590;letter-spacing:1px}
-.col-body{max-height:420px;overflow-y:auto}
-.col-row{display:grid;grid-template-columns:2fr 2fr 2.5fr 80px;padding:9px 16px;align-items:center;border-bottom:1px solid #2a304522;transition:background .15s}
-.col-row:last-child{border-bottom:none}
-.col-row.dropped{background:#f76f6f11;opacity:.55}
-.col-row:nth-child(even){background:#1e233355}
-.col-row.dropped:nth-child(even){background:#f76f6f11}
-.col-name{font-family:'Courier New',monospace;font-size:12px;color:#6b7590;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:8px}
-.ri{background:transparent;border:1px solid #2a3045;color:#e8ecf5;border-radius:6px;padding:5px 8px;font-family:'Courier New',monospace;font-size:12px;outline:none;width:90%}
-.ri:focus{border-color:#4f8ef7}.ri:disabled{opacity:.4;cursor:not-allowed}
-.tx{background:#1e2333;color:#e8ecf5;border:1px solid #2a3045;border-radius:6px;padding:5px 8px;font-family:'Courier New',monospace;font-size:12px;cursor:pointer;outline:none}
-.badge{border-radius:4px;padding:2px 8px;font-size:11px;font-family:'Courier New',monospace;white-space:nowrap;border:1px solid transparent}
-.dbtn{border-radius:6px;padding:4px 10px;font-size:11px;font-family:'Courier New',monospace;cursor:pointer;border:1px solid transparent;transition:all .15s}
-.preview-wrap{overflow-x:auto;border-radius:10px;border:1px solid #2a3045}
-.ptbl{width:100%;border-collapse:collapse;font-family:'Courier New',monospace;font-size:12px}
-.ptbl th{padding:10px 14px;text-align:left;color:#4f8ef7;border-bottom:1px solid #2a3045;background:#181c27;white-space:nowrap;font-weight:600}
-.ptbl td{padding:8px 14px;border-bottom:1px solid #2a304522;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ptbl tr:nth-child(even) td{background:#1e233344}
-.done-wrap{max-width:500px;margin:60px auto;text-align:center}
-.stat-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:28px}
-.stat-card{background:#181c27;border:1px solid #2a3045;border-radius:10px;padding:16px 12px}
-.stat-val{font-family:'Courier New',monospace;font-size:24px;font-weight:700}
-.stat-lbl{color:#6b7590;font-size:11px;margin-top:4px}
-.top-bar{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:20px}
-.btn-row{display:flex;gap:10px}
-.page-title{font-family:'Courier New',monospace;font-size:18px;font-weight:700;margin-bottom:4px}
-.page-sub{color:#6b7590;font-size:13px;margin-bottom:4px}
-.sec-lbl{font-family:'Courier New',monospace;font-size:10px;color:#4f8ef7;letter-spacing:1px;margin-bottom:10px}
-.rf-row{display:flex;gap:16px;flex-wrap:wrap;align-items:center}
-.rf-lbl{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px}
-.fi{background:#1e2333;border:1px solid #2a3045;color:#e8ecf5;border-radius:6px;padding:5px 10px;font-family:'Courier New',monospace;font-size:12px;outline:none;width:160px}
-.fi:focus{border-color:#4f8ef7}
-.qa-btn{background:transparent;border-radius:6px;padding:3px 12px;cursor:pointer;font-family:'Courier New',monospace;font-size:11px;transition:all .15s}
-#overlay{display:none;position:fixed;inset:0;background:#0f111799;z-index:100;align-items:center;justify-content:center;flex-direction:column;gap:16px}
+:root{
+  --bg:#0a0e1a;--panel:#0f1525;--card:#151c2e;--card2:#1a2235;
+  --border:#1e2d47;--border2:#243350;
+  --accent:#00d4ff;--accent2:#0099bb;--accentdim:#001f2e;
+  --green:#00e5a0;--greendim:#002e1f;
+  --orange:#ffaa00;--orangedim:#2a1e00;
+  --red:#ff4466;--reddim:#2a0010;
+  --purple:#b388ff;--purpledim:#1a0a3a;
+  --yellow:#ffe066;--yellowdim:#2a2000;
+  --text:#c8d8f0;--text2:#7a90b0;--text3:#3a4a6a;
+  --mono:'Courier New',monospace;
+  --sans:'Segoe UI',Tahoma,sans-serif;
+}
+body{background:var(--bg);font-family:var(--sans);color:var(--text);min-height:100vh;font-size:13px}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--panel)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+select option{background:var(--card)}
+
+/* ── HEADER ── */
+#hdr{background:var(–panel);border-bottom:1px solid var(–border);padding:12px 24px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:50}
+#logo{font-family:var(–mono);font-size:12px;color:var(–accent);letter-spacing:3px;font-weight:700;text-transform:uppercase}
+#filebadge{font-family:var(–mono);font-size:10px;color:var(–text2);background:var(–card);border:1px solid var(–border);border-radius:4px;padding:3px 10px;display:none}
+.steps{display:flex;align-items:center;gap:6px;margin-left:auto}
+.step{font-family:var(–mono);font-size:10px;padding:3px 10px;border-radius:12px;border:1px solid var(–border);color:var(–text3);transition:all .2s;letter-spacing:.5px}
+.step.active{background:var(–accentdim);color:var(–accent);border-color:var(–accent)}
+.sep{width:16px;height:1px;background:var(–border)}
+
+/* ── LAYOUT ── */
+#main{max-width:1200px;margin:0 auto;padding:24px 20px}
+
+/* ── UPLOAD ── */
+#dropzone{border:2px dashed var(–border2);border-radius:12px;padding:72px 32px;text-align:center;cursor:pointer;transition:all .25s;background:var(–panel);max-width:520px;margin:72px auto}
+#dropzone:hover,#dropzone.over{border-color:var(–accent);background:var(–accentdim)}
+#dropzone .dicon{font-size:36px;margin-bottom:12px;opacity:.8}
+#dropzone .dlbl{font-family:var(–mono);color:var(–accent);font-size:13px;margin-bottom:4px;letter-spacing:1px}
+#dropzone .dsub{color:var(–text2);font-size:11px}
+
+/* ── BUTTONS ── */
+.btn{border:none;padding:7px 18px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;font-family:var(–sans);transition:all .15s;white-space:nowrap}
+.btn-accent{background:var(–accent);color:#000}.btn-accent:hover{background:var(–accent2)}
+.btn-accent:disabled{background:var(–border);color:var(–text3);cursor:not-allowed}
+.btn-green{background:var(–green);color:#000;font-weight:700}.btn-green:hover{filter:brightness(1.1)}
+.btn-green:disabled{background:var(–border);color:var(–text3);cursor:not-allowed}
+.btn-ghost{background:transparent;border:1px solid var(–border);color:var(–text2)}.btn-ghost:hover{border-color:var(–accent);color:var(–accent)}
+.btn-red{background:var(–reddim);border:1px solid var(–red)44;color:var(–red)}.btn-red:hover{background:var(–red);color:#fff}
+.btn-sm{padding:4px 10px;font-size:11px;border-radius:4px}
+.btn-icon{padding:4px 8px;font-size:14px;border-radius:4px;line-height:1}
+
+/* ── TOP BAR ── */
+.topbar{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:16px}
+.ptitle{font-family:var(–mono);font-size:16px;font-weight:700;color:var(–text);letter-spacing:.5px}
+.psub{color:var(–text2);font-size:12px;margin-top:3px}
+.btnrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* ── SECTION CARD ── */
+.scard{background:var(–panel);border:1px solid var(–border);border-radius:10px;margin-bottom:12px}
+.scard-hdr{padding:10px 16px;border-bottom:1px solid var(–border);display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none}
+.scard-hdr .slbl{font-family:var(–mono);font-size:10px;color:var(–accent);letter-spacing:1.5px;font-weight:700;flex:1}
+.scard-hdr .stoggle{color:var(–text2);font-size:12px;transition:transform .2s}
+.scard-hdr.collapsed .stoggle{transform:rotate(-90deg)}
+.scard-body{padding:14px 16px}
+.scard-body.hidden{display:none}
+
+/* ── BULK TOOLBAR ── */
+#bulkBar{background:var(–accentdim);border:1px solid var(–accent)44;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:none;align-items:center;gap:10px;flex-wrap:wrap}
+#bulkBar.show{display:flex}
+#bulkBar .blbl{font-family:var(–mono);font-size:10px;color:var(–accent);letter-spacing:1px;white-space:nowrap}
+.bulkinput{background:var(–card);border:1px solid var(–border2);color:var(–text);border-radius:5px;padding:5px 9px;font-family:var(–mono);font-size:11px;outline:none;width:120px}
+.bulkinput:focus{border-color:var(–accent)}
+
+/* ── COLUMN TABLE ── */
+#colTable{border-radius:8px;overflow:hidden;border:1px solid var(–border)}
+.cthead{display:grid;grid-template-columns:32px 28px 30px 1.8fr 1.8fr 2.2fr 90px 60px;gap:0;padding:8px 10px;border-bottom:1px solid var(–border);background:var(–card2)}
+.cthead span{font-family:var(–mono);font-size:9px;color:var(–text3);letter-spacing:1px;text-transform:uppercase;display:flex;align-items:center}
+#colBody{max-height:440px;overflow-y:auto}
+.crow{display:grid;grid-template-columns:32px 28px 30px 1.8fr 1.8fr 2.2fr 90px 60px;gap:0;padding:7px 10px;align-items:center;border-bottom:1px solid var(–border)22;transition:background .1s;cursor:default}
+.crow:last-child{border-bottom:none}
+.crow:nth-child(even){background:var(–card)66}
+.crow.dropped{opacity:.4;background:var(–reddim)!important}
+.crow.formula-row{background:var(–purpledim)44}
+.crow.dragging{opacity:.4}
+.crow.drag-over{border-top:2px solid var(–accent)}
+.drag-handle{color:var(–text3);cursor:grab;font-size:14px;text-align:center;user-select:none;padding:2px}
+.drag-handle:hover{color:var(–accent)}
+.crow input[type=checkbox]{accent-color:var(–accent);cursor:pointer;width:13px;height:13px}
+.rownum{font-family:var(–mono);font-size:9px;color:var(–text3);text-align:center}
+.src-col{font-family:var(–mono);font-size:11px;color:var(–text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:6px}
+.src-col .formula-badge{font-size:9px;background:var(–purpledim);color:var(–purple);border:1px solid var(–purple)44;border-radius:3px;padding:1px 5px;margin-left:4px}
+.ci{background:transparent;border:1px solid var(–border);color:var(–text);border-radius:5px;padding:4px 7px;font-family:var(–mono);font-size:11px;outline:none;width:100%}
+.ci:focus{border-color:var(–accent);background:var(–accentdim)}
+.ci:disabled{opacity:.35;cursor:not-allowed}
+.txsel{background:var(–card2);color:var(–text);border:1px solid var(–border);border-radius:5px;padding:4px 6px;font-family:var(–mono);font-size:10px;cursor:pointer;outline:none;width:100%}
+.txbadge{border-radius:3px;padding:1px 6px;font-size:9px;font-family:var(–mono);white-space:nowrap;border:1px solid transparent;display:inline-block}
+.orderbtn{background:transparent;border:none;color:var(–text3);cursor:pointer;padding:1px 4px;font-size:12px;line-height:1;border-radius:3px}
+.orderbtn:hover{color:var(–accent);background:var(–accentdim)}
+.dropbtn{background:transparent;border:1px solid var(–border);color:var(–text2);border-radius:4px;padding:3px 8px;font-size:10px;font-family:var(–mono);cursor:pointer;transition:all .15s;white-space:nowrap}
+.dropbtn:hover{background:var(–reddim);border-color:var(–red);color:var(–red)}
+.crow.dropped .dropbtn{background:var(–greendim);border-color:var(–green);color:var(–green)}
+
+/* ── FORMULA BUILDER ── */
+#formulaPanel{background:var(–panel);border:1px solid var(–purple)44;border-radius:10px;padding:16px;margin-bottom:12px}
+#formulaPanel h3{font-family:var(–mono);font-size:11px;color:var(–purple);letter-spacing:1px;margin-bottom:12px}
+.fprow{display:flex;gap:10px;align-items:flex-start;margin-bottom:10px;flex-wrap:wrap}
+.fplbl{font-family:var(–mono);font-size:10px;color:var(–text2);margin-bottom:4px;letter-spacing:.5px}
+.fpinput{background:var(–card);border:1px solid var(–border2);color:var(–text);border-radius:6px;padding:7px 10px;font-family:var(–mono);font-size:12px;outline:none;width:100%}
+.fpinput:focus{border-color:var(–purple)}
+.formula-expr{font-size:13px;min-height:36px}
+.fp-hint{font-size:10px;color:var(–text2);margin-top:6px;line-height:1.6}
+.fp-hint code{background:var(–card2);padding:1px 5px;border-radius:3px;color:var(–purple);font-family:var(–mono)}
+.colpill{display:inline-block;background:var(–accentdim);color:var(–accent);border:1px solid var(–accent)44;border-radius:3px;padding:1px 7px;font-size:10px;font-family:var(–mono);cursor:pointer;margin:2px;white-space:nowrap;transition:all .1s}
+.colpill:hover{background:var(–accent);color:#000}
+.formula-error{color:var(–red);font-size:11px;font-family:var(–mono);margin-top:4px}
+.formula-ok{color:var(–green);font-size:11px;font-family:var(–mono);margin-top:4px}
+
+/* ── ROW FILTER ── */
+.rfrow{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.rflbl{display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px}
+input[type=radio]{accent-color:var(–accent)}
+.sminput{background:var(–card);border:1px solid var(–border2);color:var(–text);border-radius:5px;padding:5px 9px;font-family:var(–mono);font-size:11px;outline:none}
+.sminput:focus{border-color:var(–accent)}
+
+/* ── PREVIEW TABLE ── */
+.pvwrap{overflow-x:auto;border-radius:8px;border:1px solid var(–border)}
+.pvtbl{width:100%;border-collapse:collapse;font-family:var(–mono);font-size:11px}
+.pvtbl th{padding:8px 12px;text-align:left;color:var(–accent);border-bottom:1px solid var(–border);background:var(–card2);white-space:nowrap;font-weight:600;letter-spacing:.3px}
+.pvtbl td{padding:6px 12px;border-bottom:1px solid var(–border)22;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(–text)}
+.pvtbl tr:nth-child(even) td{background:var(–card)66}
+
+/* ── DONE ── */
+.donewrap{max-width:480px;margin:64px auto;text-align:center}
+.statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:24px}
+.statcard{background:var(–panel);border:1px solid var(–border);border-radius:8px;padding:14px 10px}
+.statv{font-family:var(–mono);font-size:22px;font-weight:700}
+.statl{color:var(–text2);font-size:10px;margin-top:3px;letter-spacing:.5px}
+
+/* ── OVERLAY ── */
+#overlay{display:none;position:fixed;inset:0;background:#0a0e1acc;z-index:200;align-items:center;justify-content:center;flex-direction:column;gap:14px}
 #overlay.show{display:flex}
-.spinner{width:40px;height:40px;border:3px solid #2a3045;border-top-color:#4f8ef7;border-radius:50%;animation:spin .8s linear infinite}
+.spinner{width:36px;height:36px;border:3px solid var(–border2);border-top-color:var(–accent);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+#overlayMsg{font-family:var(–mono);color:var(–accent);font-size:12px;letter-spacing:1px}
+
+/* ── MODAL ── */
+#modal{display:none;position:fixed;inset:0;background:#0a0e1acc;z-index:300;align-items:center;justify-content:center}
+#modal.show{display:flex}
+.modalbox{background:var(–panel);border:1px solid var(–border2);border-radius:12px;padding:20px;width:480px;max-width:95vw}
+.modaltitle{font-family:var(–mono);font-size:12px;color:var(–accent);letter-spacing:1px;margin-bottom:14px}
+.modalbtns{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+
+/* ── MISC ── */
+.tag{display:inline-block;font-size:9px;font-family:var(–mono);padding:1px 6px;border-radius:3px;border:1px solid transparent;vertical-align:middle}
 </style>
+
 </head>
 <body>
 
-<div id="overlay">
-  <div class="spinner"></div>
-  <div style="font-family:'Courier New',monospace;color:#4f8ef7;font-size:13px" id="overlayMsg">Reading file…</div>
+<div id="overlay"><div class="spinner"></div><div id="overlayMsg">Loading…</div></div>
+
+<!-- MODAL for bulk rename / split -->
+
+<div id="modal">
+  <div class="modalbox" id="modalbox"></div>
 </div>
 
-<div id="header">
-  <div id="logo">XLSX CLEANER</div>
-  <div id="fname"></div>
+<div id="hdr">
+  <div id="logo">⬡ Column Mapper</div>
+  <div id="filebadge"></div>
   <div class="steps">
-    <div class="step active" id="s1">1. upload</div><div class="sep"></div>
-    <div class="step" id="s2">2. configure</div><div class="sep"></div>
-    <div class="step" id="s3">3. preview</div><div class="sep"></div>
-    <div class="step" id="s4">4. done</div>
+    <div class="step active" id="s1">1. UPLOAD</div><div class="sep"></div>
+    <div class="step" id="s2">2. MAP</div><div class="sep"></div>
+    <div class="step" id="s3">3. PREVIEW</div><div class="sep"></div>
+    <div class="step" id="s4">4. EXPORT</div>
   </div>
 </div>
 
 <div id="main">
+
+  <!-- PAGE: UPLOAD -->
+
   <div id="page-upload">
-    <div id="drop">
-      <div class="icon">📂</div>
-      <div class="lbl">Drop file here or click to browse</div>
-      <div class="sub">.xlsx · .xls · .csv</div>
+    <div id="dropzone">
+      <div class="dicon">⬡</div>
+      <div class="dlbl">DROP FILE TO BEGIN</div>
+      <div class="dsub" style="margin-top:6px">.xlsx · .xls · .csv &nbsp;·&nbsp; any size</div>
       <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none"/>
     </div>
   </div>
 
-  <div id="page-configure" style="display:none">
-    <div class="top-bar">
-      <div>
-        <div class="page-title">Configure cleanup rules</div>
-        <div class="page-sub" id="fileInfo"></div>
-      </div>
-      <div class="btn-row">
-        <button class="btn btn-ghost" onclick="goUpload()">← Back</button>
-        <button class="btn btn-primary" onclick="runPreview()">Preview →</button>
-      </div>
-    </div>
-    <div class="card">
-      <div class="sec-lbl">ROW FILTER</div>
-      <div class="rf-row">
-        <label class="rf-lbl"><input type="radio" name="rf" value="all" checked onchange="rowFilter=this.value;toggleCustomFilter()"> Keep all rows</label>
-        <label class="rf-lbl"><input type="radio" name="rf" value="nonempty" onchange="rowFilter=this.value;toggleCustomFilter()"> Drop fully empty rows</label>
-        <label class="rf-lbl"><input type="radio" name="rf" value="custom" onchange="rowFilter=this.value;toggleCustomFilter()"> Filter by value</label>
-        <div id="customFilter" style="display:none;gap:8px;align-items:center" class="rf-row">
-          <select id="filterCol" class="tx"></select>
-          <input type="text" id="filterVal" class="fi" placeholder="contains…"/>
-        </div>
-      </div>
-    </div>
-    <div class="card" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 20px">
-      <span style="font-family:'Courier New',monospace;font-size:10px;color:#6b7590;letter-spacing:1px">APPLY ALL:</span>
-      <button class="qa-btn" style="border:1px solid #3ecf8e44;color:#3ecf8e" onclick="applyAll('trim')">Trim spaces</button>
-      <button class="qa-btn" style="border:1px solid #4f8ef744;color:#4f8ef7" onclick="applyAll('date_iso')">→ Date ISO</button>
-      <button class="qa-btn" style="border:1px solid #f7a34f44;color:#f7a34f" onclick="applyAll('uppercase')">→ UPPERCASE</button>
-      <button class="qa-btn" style="border:1px solid #f7a34f44;color:#f7a34f" onclick="applyAll('lowercase')">→ lowercase</button>
-      <button class="qa-btn" style="border:1px solid #6b759044;color:#6b7590" onclick="applyAll('none')">No change</button>
-    </div>
-    <div class="col-table">
-      <div class="thead"><span>ORIGINAL COLUMN</span><span>RENAME TO</span><span>TRANSFORM</span><span></span></div>
-      <div class="col-body" id="colBody"></div>
-    </div>
-  </div>
+  <!-- PAGE: MAP -->
 
-  <div id="page-preview" style="display:none">
-    <div class="top-bar">
+  <div id="page-map" style="display:none">
+    <div class="topbar">
       <div>
-        <div class="page-title">Preview <span style="color:#6b7590;font-size:14px">(first 10 rows)</span></div>
-        <div class="page-sub" id="previewInfo"></div>
+        <div class="ptitle">Column Mapping</div>
+        <div class="psub" id="mapInfo"></div>
       </div>
-      <div class="btn-row">
-        <button class="btn btn-ghost" onclick="showPage('configure')">← Edit rules</button>
-        <button class="btn btn-green" id="runBtn" onclick="runFull()">✓ Clean &amp; Download</button>
+      <div class="btnrow">
+        <button class="btn btn-ghost btn-sm" onclick="goUpload()">← Back</button>
+        <button class="btn btn-ghost btn-sm" onclick="openModal('bulkrename')">⚡ Bulk Rename</button>
+        <button class="btn btn-ghost btn-sm" onclick="openModal('addformula')">＋ Add Column</button>
+        <button class="btn btn-accent btn-sm" onclick="runPreview()">Preview →</button>
       </div>
     </div>
-    <div class="preview-wrap"><table class="ptbl" id="previewTable"></table></div>
-  </div>
 
-  <div id="page-done" style="display:none">
-    <div class="done-wrap">
-      <div style="font-size:52px;margin-bottom:16px">✅</div>
-      <div class="page-title" style="font-size:22px;margin-bottom:8px">Files downloaded!</div>
-      <div style="color:#6b7590;font-size:14px;margin-bottom:28px">Both .xlsx and .csv saved to your Downloads folder</div>
-      <div class="stat-grid" id="statGrid"></div>
-      <button class="btn btn-primary" style="padding:10px 28px;font-size:14px" onclick="goUpload()">Clean another file</button>
+```
+<!-- Bulk action bar (shows when cols selected) -->
+<div id="bulkBar">
+  <span class="blbl" id="bulkCount">0 selected</span>
+  <div style="width:1px;height:20px;background:var(--border)"></div>
+  <button class="btn btn-ghost btn-sm" onclick="bulkDropSelected()">Drop selected</button>
+  <button class="btn btn-ghost btn-sm" onclick="openModal('bulkapply')">Apply transform</button>
+  <button class="btn btn-ghost btn-sm" onclick="openModal('bulkprefix')">Add prefix/suffix</button>
+  <button class="btn btn-ghost btn-sm" onclick="openModal('findreplace')">Find &amp; replace</button>
+  <button class="btn btn-ghost btn-sm" onclick="clearSelection()">✕ Clear</button>
+</div>
+
+<!-- Row filter -->
+<div class="scard">
+  <div class="scard-hdr" onclick="toggleCard(this)">
+    <span class="slbl">ROW FILTER</span><span class="stoggle">▾</span>
+  </div>
+  <div class="scard-body">
+    <div class="rfrow">
+      <label class="rflbl"><input type="radio" name="rf" value="all" checked onchange="rowFilter=this.value;toggleCustomFilter()"> Keep all rows</label>
+      <label class="rflbl"><input type="radio" name="rf" value="nonempty" onchange="rowFilter=this.value;toggleCustomFilter()"> Drop fully empty rows</label>
+      <label class="rflbl"><input type="radio" name="rf" value="custom" onchange="rowFilter=this.value;toggleCustomFilter()"> Filter by value</label>
+      <div id="customFilter" style="display:none;gap:8px;align-items:center" class="rfrow">
+        <select id="filterCol" class="txsel" style="width:160px"></select>
+        <input type="text" id="filterVal" class="sminput" placeholder="contains…" style="width:140px"/>
+      </div>
     </div>
   </div>
 </div>
 
+<!-- Column table -->
+<div id="colTable">
+  <div class="cthead">
+    <span></span>
+    <span><input type="checkbox" id="selAll" onchange="toggleSelectAll(this.checked)" style="accent-color:var(--accent)"/></span>
+    <span>#</span>
+    <span>SOURCE COLUMN</span>
+    <span>OUTPUT NAME</span>
+    <span>TRANSFORM / FORMULA</span>
+    <span>TYPE</span>
+    <span></span>
+  </div>
+  <div id="colBody"></div>
+</div>
+```
+
+  </div>
+
+  <!-- PAGE: PREVIEW -->
+
+  <div id="page-preview" style="display:none">
+    <div class="topbar">
+      <div>
+        <div class="ptitle">Preview</div>
+        <div class="psub" id="previewInfo"></div>
+      </div>
+      <div class="btnrow">
+        <button class="btn btn-ghost btn-sm" onclick="showPage('map')">← Edit mapping</button>
+        <button class="btn btn-green" id="runBtn" onclick="runFull()">⬇ Export all rows</button>
+      </div>
+    </div>
+    <div class="pvwrap"><table class="pvtbl" id="pvTable"></table></div>
+  </div>
+
+  <!-- PAGE: DONE -->
+
+  <div id="page-done" style="display:none">
+    <div class="donewrap">
+      <div style="font-size:44px;margin-bottom:12px">⬡</div>
+      <div class="ptitle" style="font-size:20px;margin-bottom:6px;text-align:center">Export complete</div>
+      <div style="color:var(--text2);font-size:12px;margin-bottom:24px;text-align:center">.xlsx and .csv saved to Downloads</div>
+      <div class="statgrid" id="statGrid"></div>
+      <button class="btn btn-accent" style="padding:9px 28px" onclick="goUpload()">Map another file</button>
+    </div>
+  </div>
+
+</div>
+
 <script>
-// ═══════════════════════════════════════════════════════════════
-// XL — self-contained XLSX/CSV reader+writer (zero dependencies)
-// ═══════════════════════════════════════════════════════════════
-const XL = (function(){
-
-  // CRC32 table
-  const CRCT = new Uint32Array(256);
+// ═══════════════════════════════════════════════════
+// XL ENGINE — zero external deps
+// ═══════════════════════════════════════════════════
+const XL=(function(){
+  const CRCT=new Uint32Array(256);
   for(let i=0;i<256;i++){let c=i;for(let j=0;j<8;j++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);CRCT[i]=c;}
-  function crc32(buf){let c=0xFFFFFFFF;for(let i=0;i<buf.length;i++)c=CRCT[(c^buf[i])&0xFF]^(c>>>8);return(c^0xFFFFFFFF)>>>0;}
-
-  // ── Async ZIP reader using DecompressionStream ──────────────
+  function crc32(b){let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=CRCT[(c^b[i])&0xFF]^(c>>>8);return(c^0xFFFFFFFF)>>>0;}
   async function unzip(ab){
-    const u8=new Uint8Array(ab), view=new DataView(ab), files={};
+    const u8=new Uint8Array(ab),view=new DataView(ab),files={};
     let eocd=-1;
-    for(let i=u8.length-22;i>=Math.max(0,u8.length-65558);i--){
-      if(u8[i]===0x50&&u8[i+1]===0x4B&&u8[i+2]===0x05&&u8[i+3]===0x06){eocd=i;break;}
-    }
-    if(eocd<0) return files;
-    const cdOff=view.getUint32(eocd+16,true), cdCount=view.getUint16(eocd+8,true);
-    const td=new TextDecoder('utf-8');
+    for(let i=u8.length-22;i>=Math.max(0,u8.length-65558);i--){if(u8[i]===0x50&&u8[i+1]===0x4B&&u8[i+2]===0x05&&u8[i+3]===0x06){eocd=i;break;}}
+    if(eocd<0)return files;
+    const cdOff=view.getUint32(eocd+16,true),cdCount=view.getUint16(eocd+8,true),TD2=new TextDecoder('utf-8');
     let pos=cdOff;
     for(let e=0;e<cdCount;e++){
-      if(view.getUint32(pos,true)!==0x02014B50) break;
-      const fnLen=view.getUint16(pos+28,true), exLen=view.getUint16(pos+30,true), cmtLen=view.getUint16(pos+32,true);
-      const lhOff=view.getUint32(pos+42,true);
-      const fname=td.decode(u8.slice(pos+46,pos+46+fnLen));
-      pos+=46+fnLen+exLen+cmtLen;
-      const lfnLen=view.getUint16(lhOff+26,true), lexLen=view.getUint16(lhOff+28,true);
-      const method=view.getUint16(lhOff+8,true), compSz=view.getUint32(lhOff+18,true);
-      const dStart=lhOff+30+lfnLen+lexLen;
-      const compData=u8.slice(dStart,dStart+compSz);
-      if(method===0){
-        files[fname]=compData;
-      } else if(method===8){
+      if(view.getUint32(pos,true)!==0x02014B50)break;
+      const fnL=view.getUint16(pos+28,true),exL=view.getUint16(pos+30,true),cmL=view.getUint16(pos+32,true),lhO=view.getUint32(pos+42,true);
+      const fname=TD2.decode(u8.slice(pos+46,pos+46+fnL));
+      pos+=46+fnL+exL+cmL;
+      const lfnL=view.getUint16(lhO+26,true),lexL=view.getUint16(lhO+28,true),method=view.getUint16(lhO+8,true),cSz=view.getUint32(lhO+18,true);
+      const dStart=lhO+30+lfnL+lexL,cData=u8.slice(dStart,dStart+cSz);
+      if(method===0){files[fname]=cData;}
+      else if(method===8){
         try{
-          const ds=new DecompressionStream('deflate-raw');
-          const w=ds.writable.getWriter(), r=ds.readable.getReader();
-          w.write(compData); w.close();
-          const chunks=[]; let total=0;
-          while(true){const{done,value}=await r.read();if(done)break;chunks.push(value);total+=value.length;}
-          const out=new Uint8Array(total); let off=0;
-          for(const ch of chunks){out.set(ch,off);off+=ch.length;}
+          const ds=new DecompressionStream('deflate-raw'),w=ds.writable.getWriter(),r=ds.readable.getReader();
+          w.write(cData);w.close();
+          const ch=[];let tot=0;
+          while(true){const{done,value}=await r.read();if(done)break;ch.push(value);tot+=value.length;}
+          const out=new Uint8Array(tot);let off=0;for(const c of ch){out.set(c,off);off+=c.length;}
           files[fname]=out;
         }catch(e){files[fname]=new Uint8Array(0);}
       }
     }
     return files;
   }
-
-  // ── XML helpers ─────────────────────────────────────────────
-  const TD=new TextDecoder('utf-8',{fatal:false});
-  const xmlStr=u8=>TD.decode(u8);
-  const unescXML=s=>s.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&#(\d+);/g,(_,n)=>String.fromCharCode(+n));
-
-  // ── Shared strings ──────────────────────────────────────────
-  function parseSST(x){
-    const ss=[],re=/<si\b[^>]*>([\s\S]*?)<\/si>/g;
-    let m;
-    while((m=re.exec(x))!==null){
-      const ts=[],tr=/<t(?:[^>]*)>([\s\S]*?)<\/t>/g;let tm;
-      while((tm=tr.exec(m[1]))!==null)ts.push(unescXML(tm[1]));
-      ss.push(ts.join(''));
-    }
-    return ss;
-  }
-
-  // ── Col letter → index ──────────────────────────────────────
+  const TDec=new TextDecoder('utf-8',{fatal:false});
+  const xs=u8=>TDec.decode(u8);
+  const ux=s=>s.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&#(\d+);/g,(_,n)=>String.fromCharCode(+n));
+  function parseSST(x){const ss=[],re=/<si\b[^>]*>([\s\S]*?)<\/si>/g;let m;while((m=re.exec(x))!==null){const ts=[],tr=/<t(?:[^>]*)>([\s\S]*?)<\/t>/g;let tm;while((tm=tr.exec(m[1]))!==null)ts.push(ux(tm[1]));ss.push(ts.join(''));}return ss;}
   function colNum(c){let n=0;for(let i=0;i<c.length;i++)n=n*26+(c.charCodeAt(i)-64);return n;}
-
-  // ── Sheet XML → row objects ─────────────────────────────────
   function parseSheet(x,ss){
-    const rowRe=/<row\b[^>]*>([\s\S]*?)<\/row>/g;
-    const all=[];let rm;
+    const rowRe=/<row\b[^>]*>([\s\S]*?)<\/row>/g,all=[];let rm;
     while((rm=rowRe.exec(x))!==null){
-      const cells={},cellRe=/<c\b([^>]*)>([\s\S]*?)<\/c>/g;let cm;
-      while((cm=cellRe.exec(rm[1]))!==null){
-        const attrs=cm[1],inner=cm[2];
-        const rM=attrs.match(/\br="([A-Z]+\d+)"/);if(!rM)continue;
-        const col=rM[1].replace(/\d+/,'');
-        const t=(attrs.match(/\bt="(\w+)"/)??[])[1]??'';
-        const v=unescXML((inner.match(/<v>([\s\S]*?)<\/v>/)??['',''])[1]);
+      const cells={},cr=/<c\b([^>]*)>([\s\S]*?)<\/c>/g;let cm;
+      while((cm=cr.exec(rm[1]))!==null){
+        const at=cm[1],inn=cm[2],rM=at.match(/\br="([A-Z]+\d+)"/);if(!rM)continue;
+        const col=rM[1].replace(/\d+/,''),t=(at.match(/\bt="(\w+)"/)??[])[1]??'';
+        const v=ux((inn.match(/<v>([\s\S]*?)<\/v>/)??['',''])[1]);
         let val=v;
         if(t==='s')val=ss[parseInt(v)]??'';
-        else if(t==='inlineStr')val=unescXML((inner.match(/<t>([\s\S]*?)<\/t>/)??['',''])[1]);
+        else if(t==='inlineStr')val=ux((inn.match(/<t>([\s\S]*?)<\/t>/)??['',''])[1]);
         else if(t==='b')val=v==='1'?'TRUE':'FALSE';
         cells[col]=val;
       }
       all.push(cells);
     }
     if(!all.length)return[];
-    const hCells=all[0];
-    const cols=Object.keys(hCells).sort((a,b)=>colNum(a)-colNum(b));
-    const hdrs=cols.map(c=>hCells[c]||c);
-    const rows=[];
-    for(let i=1;i<all.length;i++){
-      const row={};cols.forEach((c,j)=>{row[hdrs[j]]=all[i][c]??'';});rows.push(row);
-    }
-    return rows;
+    const hC=all[0],cols=Object.keys(hC).sort((a,b)=>colNum(a)-colNum(b)),hdrs=cols.map(c=>hC[c]||c);
+    return all.slice(1).map(r=>{const row={};cols.forEach((c,j)=>{row[hdrs[j]]=r[c]??'';});return row;});
   }
-
-  // ── CSV ─────────────────────────────────────────────────────
-  function csvLine(l){
-    const cols=[];let cur='',inQ=false;
-    for(let i=0;i<l.length;i++){
-      const c=l[i];
-      if(c==='"'&&!inQ)inQ=true;
-      else if(c==='"'&&inQ&&l[i+1]==='"'){cur+='"';i++;}
-      else if(c==='"'&&inQ)inQ=false;
-      else if(c===','&&!inQ){cols.push(cur);cur='';}
-      else cur+=c;
-    }
-    cols.push(cur);return cols;
-  }
-  function readCSV(text){
-    const lines=text.split(/\r?\n/).filter(l=>l.trim());
-    if(!lines.length)return[];
-    const hdrs=csvLine(lines[0]);
-    return lines.slice(1).map(l=>{const v=csvLine(l);const r={};hdrs.forEach((h,i)=>{r[h]=v[i]??'';});return r;});
-  }
-
-  // ── Public read ─────────────────────────────────────────────
-  async function readXLSX(ab){
-    const files=await unzip(ab);
-    const ss=files['xl/sharedStrings.xml']?parseSST(xmlStr(files['xl/sharedStrings.xml'])):[];
-    const shFile=files['xl/worksheets/sheet1.xml'];
-    if(!shFile)throw new Error('No worksheet found in file');
-    return parseSheet(xmlStr(shFile),ss);
-  }
-
-  // ── CSV writer ───────────────────────────────────────────────
-  function toCSV(rows){
-    if(!rows.length)return'';
-    const h=Object.keys(rows[0]);
-    const q=v=>`"${String(v??'').replace(/"/g,'""')}"`;
-    return[h.map(q).join(','),...rows.map(r=>h.map(k=>q(r[k])).join(','))].join('\n');
-  }
-
-  // ── XLSX writer ──────────────────────────────────────────────
+  function csvLine(l){const cols=[];let cur='',inQ=false;for(let i=0;i<l.length;i++){const c=l[i];if(c==='"'&&!inQ)inQ=true;else if(c==='"'&&inQ&&l[i+1]==='"'){cur+='"';i++;}else if(c==='"'&&inQ)inQ=false;else if(c===','&&!inQ){cols.push(cur);cur='';}else cur+=c;}cols.push(cur);return cols;}
+  function readCSV(t){const lines=t.split(/\r?\n/).filter(l=>l.trim());if(!lines.length)return[];const h=csvLine(lines[0]);return lines.slice(1).map(l=>{const v=csvLine(l);const r={};h.forEach((hd,i)=>{r[hd]=v[i]??'';});return r;});}
+  async function readXLSX(ab){const files=await unzip(ab);const ss=files['xl/sharedStrings.xml']?parseSST(xs(files['xl/sharedStrings.xml'])):[];const sf=files['xl/worksheets/sheet1.xml'];if(!sf)throw new Error('No worksheet found');return parseSheet(xs(sf),ss);}
+  function toCSV(rows){if(!rows.length)return'';const h=Object.keys(rows[0]),q=v=>`"${String(v??'').replace(/"/g,'""')}"`;return[h.map(q).join(','),...rows.map(r=>h.map(k=>q(r[k])).join(','))].join('\n');}
   function toXLSX(rows){
-    const TE=new TextEncoder();
-    const h=rows.length?Object.keys(rows[0]):[];
+    const TE=new TextEncoder(),h=rows.length?Object.keys(rows[0]):[];
     const ex=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    const cl=n=>{let l='';while(n>0){l=String.fromCharCode(65+(n-1)%26)+l;n=Math.floor((n-1)/26);}return l;}
-    const ssA=[],ssM={};
-    const si=s=>{if(ssM[s]===undefined){ssM[s]=ssA.length;ssA.push(s);}return ssM[s];};
-
-    let shXML=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>`;
-    shXML+=`<row r="1">${h.map((hd,i)=>`<c r="${cl(i+1)}1" t="s"><v>${si(String(hd))}</v></c>`).join('')}</row>`;
-    rows.forEach((row,ri)=>{
-      const cells=h.map((hd,i)=>{
-        const v=row[hd]??'',sv=String(v);
-        if(sv==='')return'';
-        if(!isNaN(v)&&sv.trim()!=='')return`<c r="${cl(i+1)}${ri+2}"><v>${ex(sv)}</v></c>`;
-        return`<c r="${cl(i+1)}${ri+2}" t="s"><v>${si(sv)}</v></c>`;
-      }).join('');
-      if(cells)shXML+=`<row r="${ri+2}">${cells}</row>`;
-    });
-    shXML+=`</sheetData></worksheet>`;
-
-    const ssXML=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${ssA.length}" uniqueCount="${ssA.length}">${ssA.map(s=>`<si><t xml:space="preserve">${ex(s)}</t></si>`).join('')}</sst>`;
-    const wbXML=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Cleaned" sheetId="1" r:id="rId1"/></sheets></workbook>`;
+    const cl=n=>{let l='';while(n>0){l=String.fromCharCode(65+(n-1)%26)+l;n=Math.floor((n-1)/26);}return l;};
+    const ssA=[],ssM={};const si=s=>{if(ssM[s]===undefined){ssM[s]=ssA.length;ssA.push(s);}return ssM[s];};
+    let sh=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>`;
+    sh+=`<row r="1">${h.map((hd,i)=>`<c r="${cl(i+1)}1" t="s"><v>${si(String(hd))}</v></c>`).join('')}</row>`;
+    rows.forEach((row,ri)=>{const cells=h.map((hd,i)=>{const v=row[hd]??'',sv=String(v);if(sv==='')return'';if(!isNaN(v)&&sv.trim()!=='')return`<c r="${cl(i+1)}${ri+2}"><v>${ex(sv)}</v></c>`;return`<c r="${cl(i+1)}${ri+2}" t="s"><v>${si(sv)}</v></c>`;}).join('');if(cells)sh+=`<row r="${ri+2}">${cells}</row>`;});
+    sh+=`</sheetData></worksheet>`;
+    const ssX=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${ssA.length}" uniqueCount="${ssA.length}">${ssA.map(s=>`<si><t xml:space="preserve">${ex(s)}</t></si>`).join('')}</sst>`;
+    const wbX=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Mapped" sheetId="1" r:id="rId1"/></sheets></workbook>`;
     const wbR=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/></Relationships>`;
-    const dotR=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
+    const dR=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
     const ct=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/></Types>`;
-
-    const fm={'[Content_Types].xml':ct,'_rels/.rels':dotR,'xl/workbook.xml':wbXML,'xl/_rels/workbook.xml.rels':wbR,'xl/worksheets/sheet1.xml':shXML,'xl/sharedStrings.xml':ssXML};
-    const entries=[],cdParts=[];let offset=0;
-    for(const[name,content]of Object.entries(fm)){
-      const nb=TE.encode(name),db=TE.encode(content),crc=crc32(db);
-      const lh=new Uint8Array(30+nb.length);const dv=new DataView(lh.buffer);
-      dv.setUint32(0,0x04034B50,true);dv.setUint16(4,20,true);dv.setUint32(14,crc,true);
-      dv.setUint32(18,db.length,true);dv.setUint32(22,db.length,true);dv.setUint16(26,nb.length,true);lh.set(nb,30);
-      const cd=new Uint8Array(46+nb.length);const cdv=new DataView(cd.buffer);
-      cdv.setUint32(0,0x02014B50,true);cdv.setUint16(4,20,true);cdv.setUint16(6,20,true);
-      cdv.setUint32(16,crc,true);cdv.setUint32(20,db.length,true);cdv.setUint32(24,db.length,true);
-      cdv.setUint16(28,nb.length,true);cdv.setUint32(42,offset,true);cd.set(nb,46);
-      entries.push(lh,db);cdParts.push(cd);offset+=lh.length+db.length;
-    }
-    const cdSz=cdParts.reduce((s,p)=>s+p.length,0);
-    const eocd=new Uint8Array(22);const ev=new DataView(eocd.buffer);
-    ev.setUint32(0,0x06054B50,true);ev.setUint16(8,cdParts.length,true);ev.setUint16(10,cdParts.length,true);
-    ev.setUint32(12,cdSz,true);ev.setUint32(16,offset,true);
-    const all=[...entries,...cdParts,eocd];
-    const total=all.reduce((s,p)=>s+p.length,0);
-    const out=new Uint8Array(total);let pos=0;
-    for(const p of all){out.set(p,pos);pos+=p.length;}
+    const fm={'[Content_Types].xml':ct,'_rels/.rels':dR,'xl/workbook.xml':wbX,'xl/_rels/workbook.xml.rels':wbR,'xl/worksheets/sheet1.xml':sh,'xl/sharedStrings.xml':ssX};
+    const entries=[],cdP=[];let offset=0;
+    for(const[name,content]of Object.entries(fm)){const nb=TE.encode(name),db=TE.encode(content),crc=crc32(db);const lh=new Uint8Array(30+nb.length);const dv=new DataView(lh.buffer);dv.setUint32(0,0x04034B50,true);dv.setUint16(4,20,true);dv.setUint32(14,crc,true);dv.setUint32(18,db.length,true);dv.setUint32(22,db.length,true);dv.setUint16(26,nb.length,true);lh.set(nb,30);const cd=new Uint8Array(46+nb.length);const cdv=new DataView(cd.buffer);cdv.setUint32(0,0x02014B50,true);cdv.setUint16(4,20,true);cdv.setUint16(6,20,true);cdv.setUint32(16,crc,true);cdv.setUint32(20,db.length,true);cdv.setUint32(24,db.length,true);cdv.setUint16(28,nb.length,true);cdv.setUint32(42,offset,true);cd.set(nb,46);entries.push(lh,db);cdP.push(cd);offset+=lh.length+db.length;}
+    const cdSz=cdP.reduce((s,p)=>s+p.length,0),eocd=new Uint8Array(22);const ev=new DataView(eocd.buffer);ev.setUint32(0,0x06054B50,true);ev.setUint16(8,cdP.length,true);ev.setUint16(10,cdP.length,true);ev.setUint32(12,cdSz,true);ev.setUint32(16,offset,true);
+    const all=[...entries,...cdP,eocd],total=all.reduce((s,p)=>s+p.length,0),out=new Uint8Array(total);let pos=0;for(const p of all){out.set(p,pos);pos+=p.length;}
     return new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
   }
-
   return{readXLSX,readCSV,toCSV,toXLSX};
 })();
 
-// ═══════════════════════════════════════════════════════════════
-// APP STATE & HELPERS
-// ═══════════════════════════════════════════════════════════════
-let rawData=[],headers=[],colConfig={},fileName='',rowFilter='all';
-
-const TRANSFORMS=[
-  {v:'none',           l:'No change',            c:'#6b7590'},
-  {v:'trim',           l:'Trim spaces',          c:'#3ecf8e'},
-  {v:'date_iso',       l:'→ Date (YYYY-MM-DD)',  c:'#4f8ef7'},
-  {v:'date_us',        l:'→ Date (MM/DD/YYYY)',  c:'#4f8ef7'},
-  {v:'uppercase',      l:'→ UPPERCASE',          c:'#f7a34f'},
-  {v:'lowercase',      l:'→ lowercase',          c:'#f7a34f'},
-  {v:'titlecase',      l:'→ Title Case',         c:'#f7a34f'},
-  {v:'number',         l:'→ Number',             c:'#a78bfa'},
-  {v:'remove_special', l:'Remove special chars', c:'#f76f6f'},
-  {v:'snake_case',     l:'→ snake_case (rename)',c:'#3ecf8e'},
-  {v:'drop_col',       l:'Drop column',          c:'#f76f6f'},
-];
-
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-function showPage(p){
-  ['upload','configure','preview','done'].forEach((x,i)=>{
-    document.getElementById('page-'+x).style.display=x===p?'block':'none';
-    document.getElementById('s'+(i+1)).classList.toggle('active',x===p);
+// ═══════════════════════════════════════════════════
+// FORMULA ENGINE
+// ═══════════════════════════════════════════════════
+function evalFormula(expr, row, headers) {
+  // Replace [ColName] with row values
+  let e = expr.replace(/\[([^\]]+)\]/g, (_, col) => {
+    const v = row[col];
+    if(v === undefined) return '""';
+    const n = parseFloat(v);
+    return isNaN(n) ? `"${String(v).replace(/"/g,'\\"')}"` : String(n);
   });
-}
-function showOverlay(msg){document.getElementById('overlayMsg').textContent=msg||'Processing…';document.getElementById('overlay').classList.add('show');}
-function hideOverlay(){document.getElementById('overlay').classList.remove('show');}
-function dlBlob(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);}
 
-// ── File load ────────────────────────────────────────────────────
-const drop=document.getElementById('drop'),fi=document.getElementById('fileInput');
-drop.addEventListener('click',()=>fi.click());
-drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('over');});
-drop.addEventListener('dragleave',()=>drop.classList.remove('over'));
-drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('over');loadFile(e.dataTransfer.files[0]);});
-fi.addEventListener('change',e=>loadFile(e.target.files[0]));
+  // Build safe eval context
+  const fns = {
+    LEFT:   (s,n)=>String(s).slice(0,n),
+    RIGHT:  (s,n)=>String(s).slice(-n),
+    MID:    (s,st,n)=>String(s).slice(st-1,st-1+n),
+    LEN:    s=>String(s).length,
+    TRIM:   s=>String(s).trim(),
+    UPPER:  s=>String(s).toUpperCase(),
+    LOWER:  s=>String(s).toLowerCase(),
+    PROPER: s=>String(s).replace(/\w\S*/g,t=>t[0].toUpperCase()+t.slice(1).toLowerCase()),
+    SUBSTITUTE:(s,old,nw)=>String(s).split(old).join(nw),
+    REPLACE:(s,st,n,nw)=>String(s).slice(0,st-1)+nw+String(s).slice(st-1+n),
+    ROUND:  (n,d)=>Math.round(n*Math.pow(10,d))/Math.pow(10,d),
+    FLOOR:  (n,s)=>Math.floor(n/s)*s,
+    CEILING:(n,s)=>Math.ceil(n/s)*s,
+    ABS:    n=>Math.abs(n),
+    MOD:    (n,d)=>n%d,
+    TEXT:   (v,fmt)=>{ if(fmt==='0')return String(Math.round(v)); if(fmt==='0.00')return Number(v).toFixed(2); return String(v); },
+    IF:     (cond,t,f)=>cond?t:f,
+    IIF:    (cond,t,f)=>cond?t:f,
+    ISNULL: v=>v===null||v===undefined||v==='',
+    COALESCE:(a,b)=>( a===null||a===undefined||a==='')?b:a,
+    CONCAT: (...args)=>args.join(''),
+    NOW:    ()=>new Date().toISOString().slice(0,10),
+    TODAY:  ()=>new Date().toISOString().slice(0,10),
+  };
 
-async function loadFile(file){
-  if(!file)return;
-  fileName=file.name;
-  const ext=file.name.split('.').pop().toLowerCase();
-  showOverlay('Reading file…');
-  try{
-    if(ext==='csv'){
-      rawData=XL.readCSV(await file.text());
-    }else{
-      rawData=await XL.readXLSX(await file.arrayBuffer());
-    }
-    if(!rawData.length){hideOverlay();alert('No data found in the file.');return;}
-    headers=Object.keys(rawData[0]);
-    colConfig={};
-    headers.forEach(h=>{colConfig[h]={transform:'trim',rename:h};});
-    document.getElementById('filterCol').innerHTML=headers.map(h=>`<option value="${esc(h)}">${esc(h)}</option>`).join('');
-    document.getElementById('fileInfo').textContent=`${rawData.length.toLocaleString()} rows · ${headers.length} columns`;
-    const fn=document.getElementById('fname');fn.textContent=fileName;fn.style.display='block';
-    renderColTable();
-    hideOverlay();
-    showPage('configure');
-  }catch(err){
-    hideOverlay();
-    alert('Could not read file:\n'+err.message);
-    console.error(err);
+  // Replace & with + for string concat (Excel style)
+  e = e.replace(/&/g, '+');
+
+  try {
+    const fn = new Function(...Object.keys(fns), `"use strict"; return (${e});`);
+    const result = fn(...Object.values(fns));
+    return result === null || result === undefined ? '' : String(result);
+  } catch(err) {
+    return '#ERR:' + err.message;
   }
 }
 
-function goUpload(){rawData=[];headers=[];colConfig={};fileName='';document.getElementById('fname').style.display='none';fi.value='';showPage('upload');}
-function toggleCustomFilter(){document.getElementById('customFilter').style.display=rowFilter==='custom'?'flex':'none';}
-
-// ── Column table ─────────────────────────────────────────────────
-function renderColTable(){
-  document.getElementById('colBody').innerHTML=headers.map((col,i)=>{
-    const cfg=colConfig[col]||{transform:'none',rename:col};
-    const isDrop=cfg.transform==='drop_col';
-    const tx=TRANSFORMS.find(t=>t.v===cfg.transform)||TRANSFORMS[0];
-    const opts=TRANSFORMS.map(t=>`<option value="${t.v}"${cfg.transform===t.v?' selected':''}>${t.l}</option>`).join('');
-    return`<div class="col-row${isDrop?' dropped':''}">
-      <div class="col-name" title="${esc(col)}">${esc(col)}</div>
-      <input class="ri" value="${esc(cfg.rename||col)}" ${isDrop?'disabled':''} oninput="colConfig[headers[${i}]].rename=this.value"/>
-      <div style="display:flex;align-items:center;gap:8px">
-        <select class="tx" onchange="updateTransform(${i},this.value)">${opts}</select>
-        <span class="badge" style="background:${tx.c}22;color:${tx.c};border-color:${tx.c}44">${tx.l}</span>
-      </div>
-      <button class="dbtn" style="background:${isDrop?'#3ecf8e22':'#f76f6f22'};color:${isDrop?'#3ecf8e':'#f76f6f'};border-color:${isDrop?'#3ecf8e44':'#f76f6f44'}" onclick="toggleDrop(${i})">${isDrop?'Restore':'Drop'}</button>
-    </div>`;
-  }).join('');
+function validateFormula(expr, headers) {
+  if(!expr.trim()) return {ok:false, msg:'Empty formula'};
+  const testRow = {};
+  headers.forEach(h => { testRow[h] = '1'; });
+  const result = evalFormula(expr, testRow, headers);
+  if(String(result).startsWith('#ERR:')) return {ok:false, msg:result};
+  return {ok:true, msg:'✓ Valid — sample result: ' + result};
 }
-function updateTransform(i,val){colConfig[headers[i]].transform=val;renderColTable();}
-function toggleDrop(i){const col=headers[i];colConfig[col].transform=colConfig[col].transform==='drop_col'?'none':'drop_col';renderColTable();}
-function applyAll(t){headers.forEach(h=>{colConfig[h].transform=t;});renderColTable();}
 
-// ── Transforms ───────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════
+// TRANSFORMS
+// ═══════════════════════════════════════════════════
+const TRANSFORMS=[
+  {v:'none',l:'No change',c:'#3a4a6a'},
+  {v:'trim',l:'Trim spaces',c:'#00e5a0'},
+  {v:'date_iso',l:'→ Date YYYY-MM-DD',c:'#00d4ff'},
+  {v:'date_us',l:'→ Date MM/DD/YYYY',c:'#00d4ff'},
+  {v:'uppercase',l:'→ UPPERCASE',c:'#ffaa00'},
+  {v:'lowercase',l:'→ lowercase',c:'#ffaa00'},
+  {v:'titlecase',l:'→ Title Case',c:'#ffaa00'},
+  {v:'number',l:'→ Number',c:'#b388ff'},
+  {v:'remove_special',l:'Remove special chars',c:'#ff4466'},
+  {v:'snake_case',l:'→ snake_case',c:'#00e5a0'},
+];
+
 function toTitleCase(s){return s.replace(/\w\S*/g,t=>t[0].toUpperCase()+t.slice(1).toLowerCase());}
 function toSnakeCase(s){return s.trim().toLowerCase().replace(/[\s\-\.\/\\]+/g,'_').replace(/[^a-z0-9_]/g,'').replace(/^_+|_+$/g,'');}
-function parseDate(v){
-  if(v===null||v===undefined||v==='')return null;
-  if(typeof v==='number'){const d=new Date(Math.round((v-25569)*86400*1000));return isNaN(d.getTime())?null:d;}
-  const d=new Date(v);return isNaN(d.getTime())?null:d;
-}
+function parseDateVal(v){if(!v&&v!==0)return null;if(typeof v==='number'){const d=new Date(Math.round((v-25569)*86400*1000));return isNaN(d.getTime())?null:d;}const d=new Date(v);return isNaN(d.getTime())?null:d;}
 function applyTransform(val,type){
   const s=val===null||val===undefined?'':String(val);
   switch(type){
     case'trim':return s.trim();
-    case'date_iso':{const d=parseDate(val);return d?d.toISOString().slice(0,10):s.trim();}
-    case'date_us':{const d=parseDate(val);return d?`${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}/${d.getFullYear()}`:s.trim();}
+    case'date_iso':{const d=parseDateVal(val);return d?d.toISOString().slice(0,10):s.trim();}
+    case'date_us':{const d=parseDateVal(val);return d?`${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}/${d.getFullYear()}`:s.trim();}
     case'uppercase':return s.trim().toUpperCase();
     case'lowercase':return s.trim().toLowerCase();
     case'titlecase':return toTitleCase(s.trim());
@@ -472,33 +474,403 @@ function applyTransform(val,type){
   }
 }
 
+// ═══════════════════════════════════════════════════
+// APP STATE
+// ═══════════════════════════════════════════════════
+let rawData=[], srcHeaders=[], colDefs=[], fileName='', rowFilter='all';
+// colDef: { id, srcCol, outName, transform, dropped, formula(optional), type:'source'|'formula'|'const' }
+
+// ═══════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function showPage(p){
+  ['upload','map','preview','done'].forEach((x,i)=>{
+    document.getElementById('page-'+x).style.display=x===p?'block':'none';
+    document.getElementById('s'+(i+1)).classList.toggle('active',x===p);
+  });
+}
+function showOverlay(m){document.getElementById('overlayMsg').textContent=m||'Loading…';document.getElementById('overlay').classList.add('show');}
+function hideOverlay(){document.getElementById('overlay').classList.remove('show');}
+function dlBlob(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);}
+
+function goUpload(){
+  rawData=[];srcHeaders=[];colDefs=[];fileName='';
+  document.getElementById('filebadge').style.display='none';
+  document.getElementById('fileInput').value='';
+  showPage('upload');
+}
+
+function toggleCard(hdr){
+  hdr.classList.toggle('collapsed');
+  hdr.nextElementSibling.classList.toggle('hidden');
+}
+
+function toggleCustomFilter(){
+  document.getElementById('customFilter').style.display=rowFilter==='custom'?'flex':'none';
+}
+
+// ═══════════════════════════════════════════════════
+// FILE LOAD
+// ═══════════════════════════════════════════════════
+const dz=document.getElementById('dropzone'),fi=document.getElementById('fileInput');
+dz.addEventListener('click',()=>fi.click());
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('over');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('over'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('over');loadFile(e.dataTransfer.files[0]);});
+fi.addEventListener('change',e=>loadFile(e.target.files[0]));
+
+async function loadFile(file){
+  if(!file)return;
+  fileName=file.name;
+  const ext=file.name.split('.').pop().toLowerCase();
+  showOverlay('Reading file…');
+  try{
+    rawData = ext==='csv' ? XL.readCSV(await file.text()) : await XL.readXLSX(await file.arrayBuffer());
+    if(!rawData.length){hideOverlay();alert('No data found.');return;}
+    srcHeaders=Object.keys(rawData[0]);
+    // Build colDefs
+    colDefs=srcHeaders.map((h,i)=>({id:'c'+i,srcCol:h,outName:h,transform:'trim',dropped:false,type:'source'}));
+    // populate filter col
+    document.getElementById('filterCol').innerHTML=srcHeaders.map(h=>`<option value="${esc(h)}">${esc(h)}</option>`).join('');
+    document.getElementById('mapInfo').textContent=`${rawData.length.toLocaleString()} rows · ${srcHeaders.length} source columns`;
+    const fb=document.getElementById('filebadge');fb.textContent=fileName;fb.style.display='inline-block';
+    renderColTable();
+    hideOverlay();
+    showPage('map');
+  }catch(err){hideOverlay();alert('Could not read file:\n'+err.message);console.error(err);}
+}
+
+// ═══════════════════════════════════════════════════
+// COLUMN TABLE RENDER
+// ═══════════════════════════════════════════════════
+let dragSrcIdx=null;
+
+function renderColTable(){
+  const body=document.getElementById('colBody');
+  body.innerHTML=colDefs.map((def,i)=>{
+    const isDrop=def.dropped;
+    const isFormula=def.type==='formula'||def.type==='const';
+    const tx=TRANSFORMS.find(t=>t.v===def.transform)||TRANSFORMS[0];
+    const opts=TRANSFORMS.map(t=>`<option value="${t.v}"${def.transform===t.v?' selected':''}>${t.l}</option>`).join('');
+    const srcLabel=isFormula
+      ? `<span style="color:var(--purple)">${esc(def.srcCol)}</span><span class="formula-badge">${def.type==='const'?'CONST':'FX'}</span>`
+      : esc(def.srcCol);
+    const typeBadge=def.type==='formula'?`<span class="tag" style="background:var(--purpledim);color:var(--purple);border-color:var(--purple)44">formula</span>`
+      :def.type==='const'?`<span class="tag" style="background:var(--yellowdim);color:var(--yellow);border-color:var(--yellow)44">const</span>`
+      :`<span class="txbadge" style="background:${tx.c}22;color:${tx.c};border-color:${tx.c}44">${tx.l}</span>`;
+    return`<div class="crow${isDrop?' dropped':''}${isFormula?' formula-row':''}" id="crow${i}" draggable="true"
+        ondragstart="dragStart(${i})" ondragover="dragOver(event,${i})" ondrop="dragDrop(event,${i})" ondragleave="dragLeave(${i})">
+      <span class="drag-handle" title="Drag to reorder">⠿</span>
+      <span><input type="checkbox" class="rowcheck" data-idx="${i}" onchange="onCheckChange()" ${isDrop?'disabled':''}></span>
+      <span class="rownum">${i+1}</span>
+      <div class="src-col">${srcLabel}</div>
+      <input class="ci" value="${esc(def.outName)}" ${isDrop?'disabled':''} oninput="colDefs[${i}].outName=this.value" title="Output column name"/>
+      <div style="display:flex;align-items:center;gap:5px">
+        ${isFormula
+          ? `<input class="ci formula-expr" value="${esc(def.formula||'')}" ${isDrop?'disabled':''} oninput="colDefs[${i}].formula=this.value" style="font-size:11px" title="Formula expression"/>`
+          : `<select class="txsel" onchange="colDefs[${i}].transform=this.value;renderColTable()" ${isDrop?'disabled':''}>${opts}</select>`
+        }
+      </div>
+      <div>${typeBadge}</div>
+      <div style="display:flex;gap:3px;align-items:center">
+        <button class="orderbtn" onclick="moveRow(${i},-1)" title="Move up">↑</button>
+        <button class="orderbtn" onclick="moveRow(${i},1)" title="Move down">↓</button>
+        <button class="dropbtn" onclick="toggleDrop(${i})">${isDrop?'Restore':'Drop'}</button>
+        ${isFormula?`<button class="orderbtn btn-red" onclick="removeRow(${i})" title="Delete" style="color:var(--red)">✕</button>`:''}
+      </div>
+    </div>`;
+  }).join('');
+  updateBulkBar();
+}
+
+// Drag & drop reorder
+function dragStart(i){dragSrcIdx=i;document.getElementById('crow'+i).classList.add('dragging');}
+function dragOver(e,i){e.preventDefault();document.getElementById('crow'+i).classList.add('drag-over');}
+function dragLeave(i){document.getElementById('crow'+i).classList.remove('drag-over');}
+function dragDrop(e,i){
+  e.preventDefault();
+  document.getElementById('crow'+i).classList.remove('drag-over');
+  if(dragSrcIdx===null||dragSrcIdx===i)return;
+  const moved=colDefs.splice(dragSrcIdx,1)[0];
+  colDefs.splice(i,0,moved);
+  dragSrcIdx=null;
+  renderColTable();
+}
+
+function moveRow(i,dir){
+  const j=i+dir;if(j<0||j>=colDefs.length)return;
+  [colDefs[i],colDefs[j]]=[colDefs[j],colDefs[i]];renderColTable();
+}
+function removeRow(i){colDefs.splice(i,1);renderColTable();}
+function toggleDrop(i){colDefs[i].dropped=!colDefs[i].dropped;renderColTable();}
+
+// Selection
+function onCheckChange(){updateBulkBar();}
+function toggleSelectAll(checked){
+  document.querySelectorAll('.rowcheck').forEach(cb=>{if(!cb.disabled)cb.checked=checked;});
+  updateBulkBar();
+}
+function getSelected(){return[...document.querySelectorAll('.rowcheck:checked')].map(cb=>parseInt(cb.dataset.idx));}
+function clearSelection(){document.querySelectorAll('.rowcheck').forEach(cb=>cb.checked=false);document.getElementById('selAll').checked=false;updateBulkBar();}
+function updateBulkBar(){
+  const sel=getSelected();
+  const bb=document.getElementById('bulkBar');
+  bb.classList.toggle('show',sel.length>0);
+  document.getElementById('bulkCount').textContent=sel.length+' selected';
+}
+function bulkDropSelected(){getSelected().forEach(i=>{colDefs[i].dropped=true;});clearSelection();renderColTable();}
+
+// ═══════════════════════════════════════════════════
+// MODAL SYSTEM
+// ═══════════════════════════════════════════════════
+function openModal(type){
+  const modal=document.getElementById('modal'),box=document.getElementById('modalbox');
+  let html='';
+  if(type==='bulkrename'){
+    html=`<div class="modaltitle">⚡ BULK RENAME</div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <div class="fplbl">FIND (in column name)</div>
+        <input class="fpinput" id="brFind" placeholder="e.g.  tbl_  or  _old"/>
+      </div>
+      <div>
+        <div class="fplbl">REPLACE WITH</div>
+        <input class="fpinput" id="brReplace" placeholder="leave blank to remove"/>
+      </div>
+      <div style="display:flex;gap:10px">
+        <div style="flex:1">
+          <div class="fplbl">ADD PREFIX</div>
+          <input class="fpinput" id="brPrefix" placeholder="e.g.  dest_"/>
+        </div>
+        <div style="flex:1">
+          <div class="fplbl">ADD SUFFIX</div>
+          <input class="fpinput" id="brSuffix" placeholder="e.g.  _new"/>
+        </div>
+      </div>
+      <div>
+        <div class="fplbl">APPLY TO</div>
+        <div class="rfrow" style="gap:14px">
+          <label class="rflbl"><input type="radio" name="brScope" value="all" checked> All columns</label>
+          <label class="rflbl"><input type="radio" name="brScope" value="selected"> Selected only</label>
+        </div>
+      </div>
+    </div>
+    <div class="modalbtns">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-accent btn-sm" onclick="applyBulkRename()">Apply</button>
+    </div>`;
+  } else if(type==='bulkapply'){
+    const opts=TRANSFORMS.map(t=>`<option value="${t.v}">${t.l}</option>`).join('');
+    html=`<div class="modaltitle">APPLY TRANSFORM TO SELECTED</div>
+    <select class="fpinput" id="baTransform" style="cursor:pointer">${opts}</select>
+    <div class="modalbtns">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-accent btn-sm" onclick="applyBulkTransform()">Apply</button>
+    </div>`;
+  } else if(type==='bulkprefix'){
+    html=`<div class="modaltitle">ADD PREFIX / SUFFIX TO SELECTED</div>
+    <div style="display:flex;gap:10px">
+      <div style="flex:1"><div class="fplbl">PREFIX</div><input class="fpinput" id="bpPrefix" placeholder="e.g.  dest_"/></div>
+      <div style="flex:1"><div class="fplbl">SUFFIX</div><input class="fpinput" id="bpSuffix" placeholder="e.g.  _v2"/></div>
+    </div>
+    <div class="modalbtns">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-accent btn-sm" onclick="applyBulkPrefixSuffix()">Apply</button>
+    </div>`;
+  } else if(type==='findreplace'){
+    html=`<div class="modaltitle">FIND & REPLACE IN OUTPUT NAMES</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div><div class="fplbl">FIND</div><input class="fpinput" id="frFind" placeholder="text to find"/></div>
+      <div><div class="fplbl">REPLACE WITH</div><input class="fpinput" id="frReplace" placeholder="replacement (blank = remove)"/></div>
+    </div>
+    <div class="modalbtns">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-accent btn-sm" onclick="applyFindReplace()">Apply</button>
+    </div>`;
+  } else if(type==='addformula'){
+    const pillsHtml=srcHeaders.map(h=>`<span class="colpill" onclick="insertColRef('${h.replace(/'/g,"\\'")}','fxExpr')">[${esc(h)}]</span>`).join('');
+    html=`<div class="modaltitle">＋ ADD COLUMN</div>
+    <div style="display:flex;flex-direction:column;gap:11px">
+      <div>
+        <div class="fplbl">OUTPUT COLUMN NAME</div>
+        <input class="fpinput" id="fxName" placeholder="e.g.  full_name"/>
+      </div>
+      <div>
+        <div class="fplbl">TYPE</div>
+        <div class="rfrow" style="gap:14px">
+          <label class="rflbl"><input type="radio" name="fxType" value="formula" checked onchange="toggleFormulaType(this.value)"> Formula</label>
+          <label class="rflbl"><input type="radio" name="fxType" value="const" onchange="toggleFormulaType(this.value)"> Constant value</label>
+          <label class="rflbl"><input type="radio" name="fxType" value="split" onchange="toggleFormulaType(this.value)"> Split column</label>
+        </div>
+      </div>
+      <div id="fxFormulaBlock">
+        <div class="fplbl">FORMULA EXPRESSION</div>
+        <input class="fpinput formula-expr" id="fxExpr" placeholder='[FirstName] & " " & [LastName]' oninput="checkFormula()"/>
+        <div id="fxStatus" class="fp-hint" style="margin-top:6px"></div>
+        <div class="fp-hint" style="margin-top:8px">
+          Click a column to insert: <br/><div style="margin-top:4px">${pillsHtml}</div>
+          <br/>Functions: <code>TRIM</code> <code>UPPER</code> <code>LOWER</code> <code>LEFT(col,n)</code> <code>RIGHT(col,n)</code> <code>MID(col,s,n)</code>
+          <code>LEN</code> <code>SUBSTITUTE(col,"old","new")</code> <code>ROUND(col,2)</code> <code>IF(cond,val,else)</code>
+          <code>COALESCE(col1,col2)</code> <code>TODAY()</code><br/>Use <code>&</code> or <code>+</code> to concatenate.
+        </div>
+      </div>
+      <div id="fxConstBlock" style="display:none">
+        <div class="fplbl">CONSTANT VALUE</div>
+        <input class="fpinput" id="fxConst" placeholder='e.g.  CLIENT_A  or  2024  or  N/A'/>
+      </div>
+      <div id="fxSplitBlock" style="display:none">
+        <div class="fplbl">SOURCE COLUMN TO SPLIT</div>
+        <select class="fpinput" id="fxSplitCol" style="cursor:pointer">${srcHeaders.map(h=>`<option>${esc(h)}</option>`).join('')}</select>
+        <div class="fplbl" style="margin-top:8px">DELIMITER</div>
+        <input class="fpinput" id="fxSplitDelim" placeholder='e.g.  ,  or  space  or  -'/>
+        <div class="fplbl" style="margin-top:8px">PART NUMBER (1 = first part)</div>
+        <input class="fpinput" id="fxSplitPart" type="number" value="1" min="1"/>
+      </div>
+    </div>
+    <div class="modalbtns">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-accent btn-sm" onclick="applyAddColumn()">Add Column</button>
+    </div>`;
+  }
+  box.innerHTML=html;
+  modal.classList.add('show');
+  modal.onclick=e=>{if(e.target===modal)closeModal();};
+}
+function closeModal(){document.getElementById('modal').classList.remove('show');}
+
+function toggleFormulaType(v){
+  document.getElementById('fxFormulaBlock').style.display=v==='formula'?'block':'none';
+  document.getElementById('fxConstBlock').style.display=v==='const'?'block':'none';
+  document.getElementById('fxSplitBlock').style.display=v==='split'?'block':'none';
+}
+
+function insertColRef(col, targetId){
+  const inp=document.getElementById(targetId);
+  if(!inp)return;
+  const pos=inp.selectionStart||inp.value.length;
+  inp.value=inp.value.slice(0,pos)+`[${col}]`+inp.value.slice(pos);
+  inp.focus();inp.selectionStart=inp.selectionEnd=pos+col.length+2;
+  if(targetId==='fxExpr') checkFormula();
+}
+
+function checkFormula(){
+  const expr=document.getElementById('fxExpr')?.value||'';
+  const st=document.getElementById('fxStatus');
+  if(!st)return;
+  if(!expr.trim()){st.textContent='';return;}
+  const r=validateFormula(expr,srcHeaders);
+  st.textContent=r.msg;
+  st.style.color=r.ok?'var(--green)':'var(--red)';
+}
+
+// Modal actions
+function applyBulkRename(){
+  const find=document.getElementById('brFind').value;
+  const replace=document.getElementById('brReplace').value;
+  const prefix=document.getElementById('brPrefix').value;
+  const suffix=document.getElementById('brSuffix').value;
+  const scope=document.querySelector('input[name=brScope]:checked').value;
+  const sel=getSelected();
+  colDefs.forEach((def,i)=>{
+    if(def.dropped)return;
+    if(scope==='selected'&&!sel.includes(i))return;
+    let n=def.outName;
+    if(find) n=n.split(find).join(replace);
+    if(prefix) n=prefix+n;
+    if(suffix) n=n+suffix;
+    def.outName=n;
+  });
+  closeModal();renderColTable();
+}
+
+function applyBulkTransform(){
+  const t=document.getElementById('baTransform').value;
+  getSelected().forEach(i=>{colDefs[i].transform=t;});
+  closeModal();clearSelection();renderColTable();
+}
+
+function applyBulkPrefixSuffix(){
+  const pre=document.getElementById('bpPrefix').value;
+  const suf=document.getElementById('bpSuffix').value;
+  getSelected().forEach(i=>{colDefs[i].outName=(pre||'')+colDefs[i].outName+(suf||'');});
+  closeModal();clearSelection();renderColTable();
+}
+
+function applyFindReplace(){
+  const find=document.getElementById('frFind').value;
+  const replace=document.getElementById('frReplace').value;
+  if(!find){closeModal();return;}
+  colDefs.forEach(def=>{ def.outName=def.outName.split(find).join(replace); });
+  closeModal();renderColTable();
+}
+
+function applyAddColumn(){
+  const name=document.getElementById('fxName').value.trim();
+  if(!name){alert('Please enter an output column name.');return;}
+  const type=document.querySelector('input[name=fxType]:checked').value;
+  let def;
+  if(type==='formula'){
+    const expr=document.getElementById('fxExpr').value.trim();
+    if(!expr){alert('Please enter a formula.');return;}
+    def={id:'fx'+Date.now(),srcCol:'='+expr,outName:name,transform:'none',dropped:false,type:'formula',formula:expr};
+  } else if(type==='const'){
+    const val=document.getElementById('fxConst').value;
+    def={id:'cx'+Date.now(),srcCol:`"${val}"`,outName:name,transform:'none',dropped:false,type:'const',formula:`"${val.replace(/"/g,'\\"')}"`};
+  } else {
+    // split
+    const col=document.getElementById('fxSplitCol').value;
+    const delim=document.getElementById('fxSplitDelim').value||',';
+    const part=parseInt(document.getElementById('fxSplitPart').value)||1;
+    const actualDelim=delim.toLowerCase()==='space'?' ':delim;
+    const expr=`(String([${col}]).split("${actualDelim.replace(/"/g,'\\"')}")[${part-1}]||"")`;
+    def={id:'sx'+Date.now(),srcCol:`SPLIT([${col}],${part})`,outName:name,transform:'none',dropped:false,type:'formula',formula:expr};
+  }
+  colDefs.push(def);
+  closeModal();renderColTable();
+}
+
+// ═══════════════════════════════════════════════════
+// APPLY RULES
+// ═══════════════════════════════════════════════════
 function applyRules(data){
   const fc=document.getElementById('filterCol').value;
   const fv=document.getElementById('filterVal').value;
-  const active=headers.filter(h=>colConfig[h]?.transform!=='drop_col');
+  const activeDefs=colDefs.filter(d=>!d.dropped);
   return data.filter(row=>{
-    if(rowFilter==='nonempty')return active.some(c=>String(row[c]??'').trim()!=='');
-    if(rowFilter==='custom'&&fc&&fv)return String(row[fc]??'').toLowerCase().includes(fv.toLowerCase());
+    if(rowFilter==='nonempty'){
+      return activeDefs.some(d=>d.type==='source'&&String(row[d.srcCol]??'').trim()!=='');
+    }
+    if(rowFilter==='custom'&&fc&&fv) return String(row[fc]??'').toLowerCase().includes(fv.toLowerCase());
     return true;
   }).map(row=>{
     const out={};
-    active.forEach(col=>{
-      const{transform,rename}=colConfig[col]||{};
-      const key=(rename&&rename.trim())?rename.trim():col;
-      out[key]=transform&&transform!=='none'?applyTransform(row[col],transform):row[col];
+    activeDefs.forEach(def=>{
+      let val;
+      if(def.type==='formula'||def.type==='const'){
+        val=evalFormula(def.formula,row,srcHeaders);
+      } else {
+        val=row[def.srcCol]??'';
+        if(def.transform&&def.transform!=='none') val=applyTransform(val,def.transform);
+      }
+      out[def.outName]=val;
     });
     return out;
   });
 }
 
-// ── Preview & Run ────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════
+// PREVIEW & EXPORT
+// ═══════════════════════════════════════════════════
 function runPreview(){
   const sample=applyRules(rawData.slice(0,10));
   if(!sample.length){alert('No rows match the current filter.');return;}
   const ph=Object.keys(sample[0]);
-  document.getElementById('previewInfo').textContent=`${ph.length} columns after cleanup`;
-  document.getElementById('runBtn').textContent=`✓ Clean & Download (${rawData.length.toLocaleString()} rows)`;
-  document.getElementById('previewTable').innerHTML=
+  const activeCols=colDefs.filter(d=>!d.dropped).length;
+  document.getElementById('previewInfo').textContent=
+    `${ph.length} output columns · ${rawData.length.toLocaleString()} total rows`;
+  document.getElementById('runBtn').textContent=`⬇ Export ${rawData.length.toLocaleString()} rows`;
+  document.getElementById('pvTable').innerHTML=
     `<thead><tr>${ph.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead>
      <tbody>${sample.map(r=>`<tr>${ph.map(h=>`<td title="${esc(String(r[h]??''))}">${esc(String(r[h]??''))}</td>`).join('')}</tr>`).join('')}</tbody>`;
   showPage('preview');
@@ -506,26 +878,25 @@ function runPreview(){
 
 function runFull(){
   const btn=document.getElementById('runBtn');
-  btn.disabled=true;btn.textContent='Processing…';
-  showOverlay('Cleaning data…');
+  btn.disabled=true;btn.textContent='Exporting…';
+  showOverlay('Applying mapping…');
   setTimeout(()=>{
     try{
       const cleaned=applyRules(rawData);
-      const droppedCols=headers.filter(h=>colConfig[h]?.transform==='drop_col').length;
-      dlBlob(new Blob([XL.toCSV(cleaned)],{type:'text/csv'}),fileName.replace(/\.[^.]+$/,'')+'_cleaned.csv');
-      dlBlob(XL.toXLSX(cleaned),fileName.replace(/\.[^.]+$/,'')+'_cleaned.xlsx');
+      const droppedCols=colDefs.filter(d=>d.dropped).length;
+      const addedCols=colDefs.filter(d=>!d.dropped&&(d.type==='formula'||d.type==='const')).length;
+      const base=fileName.replace(/\.[^.]+$/,'');
+      dlBlob(new Blob([XL.toCSV(cleaned)],{type:'text/csv'}),base+'_mapped.csv');
+      dlBlob(XL.toXLSX(cleaned),base+'_mapped.xlsx');
       document.getElementById('statGrid').innerHTML=[
-        {l:'Rows cleaned',v:cleaned.length.toLocaleString(),c:'#3ecf8e'},
-        {l:'Rows dropped',v:(rawData.length-cleaned.length).toString(),c:rawData.length-cleaned.length?'#f7a34f':'#6b7590'},
-        {l:'Cols dropped',v:droppedCols.toString(),c:droppedCols?'#f76f6f':'#6b7590'},
-      ].map(s=>`<div class="stat-card"><div class="stat-val" style="color:${s.c}">${s.v}</div><div class="stat-lbl">${s.l}</div></div>`).join('');
-      hideOverlay();
-      showPage('done');
+        {l:'ROWS EXPORTED',v:cleaned.length.toLocaleString(),c:'var(--green)'},
+        {l:'COLS DROPPED', v:droppedCols.toString(),          c:droppedCols?'var(--red)':'var(--text2)'},
+        {l:'COLS ADDED',   v:addedCols.toString(),            c:addedCols?'var(--purple)':'var(--text2)'},
+      ].map(s=>`<div class="statcard"><div class="statv" style="color:${s.c}">${s.v}</div><div class="statl">${s.l}</div></div>`).join('');
+      hideOverlay();showPage('done');
     }catch(err){
-      hideOverlay();
-      btn.disabled=false;btn.textContent='✓ Clean & Download';
-      alert('Error during processing:\n'+err.message);
-      console.error(err);
+      hideOverlay();btn.disabled=false;btn.textContent='⬇ Export all rows';
+      alert('Export error:\n'+err.message);console.error(err);
     }
   },50);
 }
