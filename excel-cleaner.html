@@ -208,6 +208,8 @@ input[type=radio]{accent-color:var(–accent)}
         <button class="btn btn-ghost btn-sm" onclick="goUpload()">← Back</button>
         <button class="btn btn-ghost btn-sm" onclick="openModal('bulkrename')">⚡ Bulk Rename</button>
         <button class="btn btn-ghost btn-sm" onclick="openModal('addformula')">＋ Add Column</button>
+        <button class="btn btn-ghost btn-sm" onclick="openScriptEditor('column')" style="border-color:#6b21a8;color:#6b21a8">⌨ Column Script</button>
+        <button class="btn btn-ghost btn-sm" onclick="openScriptEditor('row')" style="border-color:#b85c00;color:#b85c00">⌨ Row Script</button>
         <button class="btn btn-accent btn-sm" onclick="runPreview()">Preview →</button>
       </div>
     </div>
@@ -915,7 +917,424 @@ function runFull(){
     }
   },50);
 }
+<!-- SCRIPT EDITOR MODAL -->
+<div id="scriptModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:400;align-items:center;justify-content:center">
+  <div id="scriptBox" style="background:#1e1e2e;border-radius:12px;width:92vw;max-width:1100px;height:88vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.5);overflow:hidden">
+
+    <!-- Script editor header -->
+    <div style="background:#16162a;border-bottom:1px solid #2a2a45;padding:12px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0">
+      <div id="scriptTitle" style="font-family:'Courier New',monospace;font-size:13px;font-weight:700;color:#c0a0ff;letter-spacing:1px"></div>
+      <div style="flex:1"></div>
+      <!-- Saved scripts dropdown -->
+      <select id="scriptLibSelect" style="background:#2a2a45;color:#c8d8f0;border:1px solid #3a3a60;border-radius:5px;padding:4px 10px;font-family:'Courier New',monospace;font-size:11px;cursor:pointer;outline:none;max-width:200px">
+        <option value="">— Load saved script —</option>
+      </select>
+      <button onclick="saveScript()" style="background:#6b21a8;border:none;color:#fff;padding:5px 14px;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">💾 Save</button>
+      <button onclick="deleteScript()" style="background:#3a1a1a;border:1px solid #c0152a44;color:#f87171;padding:5px 10px;border-radius:5px;cursor:pointer;font-size:12px">Delete</button>
+      <div style="width:1px;height:20px;background:#2a2a45"></div>
+      <button onclick="testScript()" style="background:#0a3a1a;border:1px solid #00e5a044;color:#00e5a0;padding:5px 14px;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">▶ Test</button>
+      <button onclick="applyScript()" style="background:#1a3a6a;border:1px solid #1a6ef544;color:#60a5fa;padding:5px 14px;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">✓ Apply</button>
+      <button onclick="closeScriptEditor()" style="background:transparent;border:1px solid #3a3a60;color:#6b7590;padding:5px 10px;border-radius:5px;cursor:pointer;font-size:12px">✕</button>
+    </div>
+
+    <!-- Main area: editor + sidebar -->
+    <div style="display:flex;flex:1;min-height:0">
+
+      <!-- Code editor -->
+      <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+        <textarea id="scriptEditor" spellcheck="false" style="flex:1;background:#1e1e2e;color:#cdd6f4;font-family:'Courier New',monospace;font-size:13px;line-height:1.7;padding:16px;border:none;outline:none;resize:none;tab-size:2;white-space:pre"></textarea>
+
+```
+    <!-- Output console -->
+    <div style="border-top:1px solid #2a2a45;background:#13131f;flex-shrink:0">
+      <div style="padding:6px 14px;font-family:'Courier New',monospace;font-size:10px;color:#4a4a70;letter-spacing:1px;border-bottom:1px solid #1e1e30">CONSOLE</div>
+      <div id="scriptConsole" style="padding:8px 14px;font-family:'Courier New',monospace;font-size:12px;min-height:60px;max-height:120px;overflow-y:auto;color:#a0a0c0;white-space:pre-wrap"></div>
+    </div>
+  </div>
+
+  <!-- Sidebar: reference -->
+  <div style="width:260px;background:#16162a;border-left:1px solid #2a2a45;overflow-y:auto;flex-shrink:0">
+    <div id="scriptSidebar" style="padding:14px;font-family:'Courier New',monospace;font-size:11px;color:#8888aa;line-height:1.8"></div>
+  </div>
+</div>
+```
+
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+// SCRIPT EDITOR
+// ═══════════════════════════════════════════════════
+let scriptMode = 'column'; // 'column' | 'row'
+const STORAGE_KEY = 'colmapper_scripts';
+
+// ── Saved script library (localStorage) ────────────
+function loadLibrary(){
+  try{ return JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}'); }
+  catch(e){ return {}; }
+}
+function saveLibrary(lib){
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(lib)); }
+  catch(e){ consolePrint('⚠ Could not save to localStorage: '+e.message); }
+}
+function refreshLibSelect(){
+  const lib = loadLibrary();
+  const sel = document.getElementById('scriptLibSelect');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— Load saved script —</option>';
+  Object.keys(lib)
+    .filter(k => lib[k].mode === scriptMode)
+    .sort()
+    .forEach(k => {
+      const opt = document.createElement('option');
+      opt.value = k;
+      opt.textContent = k;
+      sel.appendChild(opt);
+    });
+  sel.value = cur;
+  sel.onchange = () => {
+    const name = sel.value;
+    if(!name) return;
+    const lib2 = loadLibrary();
+    if(lib2[name]) document.getElementById('scriptEditor').value = lib2[name].code;
+  };
+}
+
+function saveScript(){
+  const code = document.getElementById('scriptEditor').value.trim();
+  if(!code){ consolePrint('Nothing to save.'); return; }
+  const name = prompt('Save script as:', document.getElementById('scriptLibSelect').value || '');
+  if(!name) return;
+  const lib = loadLibrary();
+  lib[name] = { mode: scriptMode, code, saved: new Date().toISOString() };
+  saveLibrary(lib);
+  refreshLibSelect();
+  document.getElementById('scriptLibSelect').value = name;
+  consolePrint('✓ Saved as "'+name+'"');
+}
+
+function deleteScript(){
+  const name = document.getElementById('scriptLibSelect').value;
+  if(!name){ consolePrint('No script selected.'); return; }
+  if(!confirm('Delete "'+name+'"?')) return;
+  const lib = loadLibrary();
+  delete lib[name];
+  saveLibrary(lib);
+  refreshLibSelect();
+  consolePrint('Deleted "'+name+'"');
+}
+
+// ── Console ─────────────────────────────────────────
+function consolePrint(msg, isError){
+  const el = document.getElementById('scriptConsole');
+  const line = document.createElement('div');
+  line.style.color = isError ? '#f87171' : '#a0e0b0';
+  line.textContent = msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+function consoleClear(){
+  document.getElementById('scriptConsole').innerHTML = '';
+}
+
+// ── Open/close ──────────────────────────────────────
+function openScriptEditor(mode){
+  scriptMode = mode;
+  consoleClear();
+  const modal = document.getElementById('scriptModal');
+  const title = document.getElementById('scriptTitle');
+  const sidebar = document.getElementById('scriptSidebar');
+  const editor = document.getElementById('scriptEditor');
+
+  if(mode === 'column'){
+    title.textContent = '⌨  COLUMN SCRIPT  —  bulk rename & transform columns';
+    title.style.color = '#c0a0ff';
+
+    const colList = colDefs.map((d,i) =>
+      `  // [${i}] "${d.srcCol}" → "${d.outName}"`
+    ).join('\n');
+
+    editor.value = editor.value || `// COLUMN SCRIPT
+// Available: colDefs (array), srcHeaders (array)
+// Each colDef: { srcCol, outName, transform, dropped, type, formula }
+// Modify colDefs in place — changes apply to the mapping table.
+//
+// Example: rename all date columns to P_YYYYMMDD format
+// colDefs.forEach(d => {
+//   if (/^\\d{4}-\\d{2}-\\d{2}$/.test(d.srcCol)) {
+//     d.outName = 'P_' + d.srcCol.replace(/-/g, '');
+//   }
+// });
+
+// Current columns:
+${colList}
+
+// --- Write your script below ---
+
+`;
+
+    sidebar.innerHTML = `
+<div style="color:#c0a0ff;font-weight:700;margin-bottom:8px;font-size:10px;letter-spacing:1px">COLUMN SCRIPT</div>
+<div style="color:#6060a0;margin-bottom:12px;font-size:10px">Modify colDefs[] directly.<br>Changes apply to mapping table.</div>
+
+<div style="color:#a0a0ff;margin-bottom:4px">COLDEFS FIELDS</div>
+<div style="color:#7070a0">d.srcCol — source col name</div>
+<div style="color:#7070a0">d.outName — output name</div>
+<div style="color:#7070a0">d.transform — transform key</div>
+<div style="color:#7070a0">d.dropped — true/false</div>
+<div style="color:#7070a0">d.formula — formula expr</div>
+<div style="color:#7070a0">d.type — source/formula/const</div>
+
+<div style="color:#a0a0ff;margin-top:12px;margin-bottom:4px">TRANSFORMS</div>
+${['none','trim','date_iso','date_us','uppercase','lowercase','titlecase','number','remove_special','snake_case'].map(t=>`<div style="color:#7070a0">"${t}"</div>`).join('')}
+
+<div style="color:#a0a0ff;margin-top:12px;margin-bottom:4px">EXAMPLES</div>
+<div style="color:#5a8a5a">// Date cols → P_YYYYMMDD</div>
+<div style="color:#5a7a9a">colDefs.forEach(d => {</div>
+<div style="color:#5a7a9a;padding-left:10px">if(/^\\d{4}-\\d{2}-\\d{2}$/.test(d.srcCol)){</div>
+<div style="color:#5a7a9a;padding-left:20px">d.outName='P_'+d.srcCol.replace(/-/g,'');</div>
+<div style="color:#5a7a9a;padding-left:10px">}</div>
+<div style="color:#5a7a9a">});</div>
+
+<div style="color:#5a8a5a;margin-top:8px">// Prefix all with dest_</div>
+<div style="color:#5a7a9a">colDefs.forEach(d=>{</div>
+<div style="color:#5a7a9a;padding-left:10px">d.outName='dest_'+d.outName;</div>
+<div style="color:#5a7a9a">});</div>
+
+<div style="color:#5a8a5a;margin-top:8px">// Drop cols containing "tmp"</div>
+<div style="color:#5a7a9a">colDefs.forEach(d=>{</div>
+<div style="color:#5a7a9a;padding-left:10px">if(d.srcCol.includes('tmp'))</div>
+<div style="color:#5a7a9a;padding-left:20px">d.dropped=true;</div>
+<div style="color:#5a7a9a">});</div>
+
+<div style="color:#5a8a5a;margin-top:8px">// Set transform on all</div>
+<div style="color:#5a7a9a">colDefs.forEach(d=>{</div>
+<div style="color:#5a7a9a;padding-left:10px">d.transform='trim';</div>
+<div style="color:#5a7a9a">});</div>`;
+
+  } else {
+    // row mode
+    title.textContent = '⌨  ROW SCRIPT  —  transform row data with custom logic';
+    title.style.color = '#f9a84d';
+
+    const sampleCols = srcHeaders.slice(0,6).map(h=>`  // row["${h}"]`).join('\n');
+
+    editor.value = editor.value || `// ROW SCRIPT
+// Function is called once per row.
+// Input:  row  — object with source column values (read-only reference)
+// Output: return a modified copy of the row object
+//         OR return null/false to DROP the row entirely
+//
+// Available columns (first 6 shown):
+${sampleCols}
+// (plus all other source columns)
+
+// --- Write your transform function below ---
+
+function transformRow(row) {
+  // Clone row so we don't mutate the original
+  const out = Object.assign({}, row);
+
+  // Example: format date columns as P_YYYYMMDD
+  // for (const key of Object.keys(out)) {
+  //   if (/^\\d{4}-\\d{2}-\\d{2}$/.test(key)) {
+  //     const d = new Date(out[key]);
+  //     if (!isNaN(d)) {
+  //       out[key] = 'P_' + d.toISOString().slice(0,10).replace(/-/g,'');
+  //     }
+  //   }
+  // }
+
+  // Example: drop rows where Amount is 0
+  // if (!out.Amount || Number(out.Amount) === 0) return null;
+
+  // Example: add a derived column
+  // out.FullName = (out.FirstName + ' ' + out.LastName).trim();
+
+  return out;
+}
+`;
+
+    sidebar.innerHTML = `
+<div style="color:#f9a84d;font-weight:700;margin-bottom:8px;font-size:10px;letter-spacing:1px">ROW SCRIPT</div>
+<div style="color:#6060a0;margin-bottom:12px;font-size:10px">Called once per row.<br>Return modified row or null to drop.</div>
+
+<div style="color:#a0a0ff;margin-bottom:4px">SIGNATURE</div>
+<div style="color:#7070a0">function transformRow(row)</div>
+<div style="color:#5a5a80">→ return row object to keep</div>
+<div style="color:#5a5a80">→ return null to drop row</div>
+
+<div style="color:#a0a0ff;margin-top:12px;margin-bottom:4px">AVAILABLE</div>
+<div style="color:#5a8a5a">// Helpers</div>
+<div style="color:#7070a0">trim(s)</div>
+<div style="color:#7070a0">upper(s), lower(s)</div>
+<div style="color:#7070a0">left(s,n), right(s,n)</div>
+<div style="color:#7070a0">toDate(v) → Date|null</div>
+<div style="color:#7070a0">fmtDate(v,'YYYYMMDD')</div>
+<div style="color:#7070a0">fmtDate(v,'YYYY-MM-DD')</div>
+<div style="color:#7070a0">fmtDate(v,'MM/DD/YYYY')</div>
+<div style="color:#7070a0">isBlank(v)</div>
+<div style="color:#7070a0">num(v) → number</div>
+
+<div style="color:#a0a0ff;margin-top:12px;margin-bottom:4px">SOURCE COLUMNS</div>
+${srcHeaders.map(h=>`<div style="color:#5a7a9a">row["${esc(h)}"]</div>`).join('')}
+
+<div style="color:#a0a0ff;margin-top:12px;margin-bottom:4px">EXAMPLES</div>
+<div style="color:#5a8a5a">// Format date value</div>
+<div style="color:#5a7a9a">out.date=fmtDate(row.date,</div>
+<div style="color:#5a7a9a;padding-left:10px">'YYYYMMDD');</div>
+
+<div style="color:#5a8a5a;margin-top:6px">// Drop blank rows</div>
+<div style="color:#5a7a9a">if(isBlank(row.ID))</div>
+<div style="color:#5a7a9a;padding-left:10px">return null;</div>
+
+<div style="color:#5a8a5a;margin-top:6px">// Concat columns</div>
+<div style="color:#5a7a9a">out.Name=trim(</div>
+<div style="color:#5a7a9a;padding-left:10px">row.First+' '+row.Last);</div>`;
+  }
+
+  refreshLibSelect();
+  modal.style.display = 'flex';
+  document.getElementById('scriptEditor').focus();
+}
+
+function closeScriptEditor(){
+  document.getElementById('scriptModal').style.display = 'none';
+}
+
+// ── Test script against first 3 rows ───────────────
+function testScript(){
+  consoleClear();
+  const code = document.getElementById('scriptEditor').value;
+  if(!code.trim()){ consolePrint('Nothing to test.'); return; }
+  consolePrint('▶ Running test on first 3 rows…');
+  try {
+    if(scriptMode === 'column'){
+      // Deep copy colDefs for testing
+      const testDefs = JSON.parse(JSON.stringify(colDefs));
+      const fn = new Function('colDefs','srcHeaders','console2', '"use strict";\n'+code);
+      const logs = [];
+      fn(testDefs, srcHeaders, { log: (...a) => logs.push(a.join(' ')), warn: (...a) => logs.push('⚠ '+a.join(' ')), error: (...a) => logs.push('✗ '+a.join(' ')) });
+      logs.forEach(l => consolePrint(l));
+      consolePrint('');
+      consolePrint('Result (first 5 cols):');
+      testDefs.slice(0,5).forEach((d,i) => {
+        consolePrint(`  [${i}] "${d.srcCol}" → "${d.outName}"  transform:${d.transform}  dropped:${d.dropped}`);
+      });
+      consolePrint('✓ Test complete — click Apply to update mapping table.');
+    } else {
+      // Row mode: run on first 3 rows
+      const sample = rawData.slice(0,3);
+      const helpers = rowScriptHelpers();
+      const fn = new Function(...Object.keys(helpers), 'transformRow', '"use strict"; return transformRow;');
+      const userFn = extractTransformRow(code);
+      const bound = fn(...Object.values(helpers), userFn);
+      sample.forEach((row, i) => {
+        const result = bound(row);
+        consolePrint(`Row ${i+1}: ${result === null ? '⛔ DROPPED' : JSON.stringify(result).slice(0,120)}`);
+      });
+      consolePrint('✓ Test complete — click Apply to activate for export.');
+    }
+  } catch(err) {
+    consolePrint('✗ Error: '+err.message, true);
+    console.error(err);
+  }
+}
+
+// ── Apply script ────────────────────────────────────
+function applyScript(){
+  consoleClear();
+  const code = document.getElementById('scriptEditor').value;
+  if(!code.trim()){ consolePrint('Nothing to apply.'); return; }
+  try {
+    if(scriptMode === 'column'){
+      const fn = new Function('colDefs','srcHeaders','console2', '"use strict";\n'+code);
+      fn(colDefs, srcHeaders, { log: (...a) => consolePrint(a.join(' ')), warn: (...a) => consolePrint('⚠ '+a.join(' ')), error: (...a) => consolePrint('✗ '+a.join(' '), true) });
+      renderColTable();
+      consolePrint('✓ Column mapping updated.');
+      closeScriptEditor();
+    } else {
+      // Store the row script for use in applyRules
+      activeRowScript = code;
+      consolePrint('✓ Row script saved — will run on every row during Preview & Export.');
+      closeScriptEditor();
+    }
+  } catch(err) {
+    consolePrint('✗ Error: '+err.message, true);
+    console.error(err);
+  }
+}
+
+// ── Row script helpers available inside user script ─
+function rowScriptHelpers(){
+  return {
+    trim:    s => String(s??'').trim(),
+    upper:   s => String(s??'').toUpperCase(),
+    lower:   s => String(s??'').toLowerCase(),
+    left:    (s,n) => String(s??'').slice(0,n),
+    right:   (s,n) => String(s??'').slice(-n),
+    isBlank: v => v===null||v===undefined||String(v).trim()==='',
+    num:     v => { const n=parseFloat(String(v??'').replace(/[^0-9.\-]/g,'')); return isNaN(n)?0:n; },
+    toDate:  v => { if(!v&&v!==0)return null; if(typeof v==='number'){const d=new Date(Math.round((v-25569)*86400*1000));return isNaN(d.getTime())?null:d;} const d=new Date(v);return isNaN(d.getTime())?null:d; },
+    fmtDate: (v,fmt) => {
+      const d = (() => { if(!v&&v!==0)return null; if(typeof v==='number'){const dd=new Date(Math.round((v-25569)*86400*1000));return isNaN(dd.getTime())?null:dd;} const dd=new Date(v);return isNaN(dd.getTime())?null:dd; })();
+      if(!d) return String(v??'');
+      const Y=d.getFullYear(), M=String(d.getMonth()+1).padStart(2,'0'), D=String(d.getDate()).padStart(2,'0');
+      if(fmt==='YYYYMMDD') return `${Y}${M}${D}`;
+      if(fmt==='YYYY-MM-DD') return `${Y}-${M}-${D}`;
+      if(fmt==='MM/DD/YYYY') return `${M}/${D}/${Y}`;
+      if(fmt==='P_YYYYMMDD') return `P_${Y}${M}${D}`;
+      return `${Y}-${M}-${D}`;
+    },
+  };
+}
+
+// Extract the transformRow function from user code safely
+function extractTransformRow(code){
+  const helpers = rowScriptHelpers();
+  const fn = new Function(...Object.keys(helpers), '"use strict";\n'+code+'\nreturn typeof transformRow !== "undefined" ? transformRow : null;');
+  const result = fn(...Object.values(helpers));
+  if(typeof result !== 'function') throw new Error('transformRow function not found in script');
+  return result;
+}
+
+// Active row script (null = none)
+let activeRowScript = null;
+
+// Tab key support in editor
+document.getElementById('scriptEditor').addEventListener('keydown', function(e){
+  if(e.key === 'Tab'){
+    e.preventDefault();
+    const s = this.selectionStart, end = this.selectionEnd;
+    this.value = this.value.slice(0,s) + '  ' + this.value.slice(end);
+    this.selectionStart = this.selectionEnd = s+2;
+  }
+  if(e.key === 'Escape') closeScriptEditor();
+});
+
+// Close on backdrop click
+document.getElementById('scriptModal').addEventListener('click', function(e){
+  if(e.target === this) closeScriptEditor();
+});
 </script>
 
-</body>
-</html>
+<script>
+// ── Patch applyRules to run activeRowScript when set ──
+const _origApplyRules = applyRules;
+applyRules = function(data){
+  let result = _origApplyRules(data);
+  if(activeRowScript){
+    try {
+      const helpers = rowScriptHelpers();
+      const userFn = extractTransformRow(activeRowScript);
+      const bound = new Function(...Object.keys(helpers), 'transformRow', '"use strict"; return transformRow;')(...Object.values(helpers), userFn);
+      result = result.map(row => bound(row)).filter(r => r !== null && r !== false && r !== undefined);
+    } catch(err){
+      console.error('Row script error:', err);
+      alert('Row script error:\n'+err.message);
+    }
+  }
+  return result;
+};
+</script>
