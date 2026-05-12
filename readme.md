@@ -1,399 +1,374 @@
-# Excel Column Mapper
+# Excel Transformer
 
-A self-contained, browser-based ETL tool for cleaning and mapping Excel/CSV files to database destination tables. No installation, no internet connection, no external dependencies — a single HTML file.
+Excel Transformer is a self-contained browser tool for reshaping Excel and CSV files. It can map columns, filter rows, pivot, unpivot, aggregate, preview results, export output files, and save reusable transformation configs.
 
------
+The app runs from one file: `excel-transformer.html`.
+
+No server is required for normal use. File parsing, transformations, preview, exports, and saved configs run in the browser.
+
+---
+
+## Quick Start
+
+1. Open `excel-transformer.html` in a modern browser.
+2. Upload an `.xlsx`, `.xls`, or `.csv` file.
+3. Choose the operation type:
+   - `Regular transform`
+   - `Pivot`
+   - `Unpivot`
+   - `Aggregate`
+4. Configure the visible settings for that operation.
+5. Preview the result.
+6. Export the output file.
+7. After export, choose whether to save or download the transformation config.
+
+Use `Reupload File` at the top of the app to start over with a new source file without returning to the initial screen.
+
+---
 
 ## Deployment
 
-### IIS (Windows Server) — Recommended
+### Local or Network Drive
 
-1. Copy `excel_mapper.html` to `C:\inetpub\wwwroot\`
-1. Open browser and navigate to `http://your-server/excel_mapper.html`
+Double-click `excel-transformer.html` and open it in Edge, Chrome, or Firefox.
+
+### IIS
+
+1. Copy `excel-transformer.html` to `C:\inetpub\wwwroot\`.
+2. Open `http://your-server/excel-transformer.html`.
 
 ### SharePoint
 
-1. Upload `excel_mapper.html` to a SharePoint Document Library
-1. Share the direct link with your team
+1. Upload `excel-transformer.html` to a SharePoint document library.
+2. Share the direct file link with users.
 
-### Local / Network Drive
+All processing happens in the browser. Source files are not uploaded to a backend.
 
-Double-click the file in any modern browser (Edge, Chrome, Firefox).
+---
 
-> **No internet required.** All processing happens in the browser. Files never leave the user’s machine.
+## Config JSON Workflow
 
------
+Transformation settings can be saved as a config JSON so the same rules can be reused later.
 
-## How It Works
+Supported config actions:
 
-The tool has four steps shown in the header: **Upload → Map → Preview → Export**
+- Save config to browser `localStorage`.
+- Download config as a `.json` file.
+- Load a saved local config.
+- Drop or browse for a config JSON file.
+- Validate the config against the uploaded data file before applying it.
 
-### Step 1 — Upload
+The app checks whether referenced source columns exist in the uploaded file. If there are mismatches, it reports the discrepancies before applying the config.
 
-Drop or browse for a `.xlsx`, `.xls`, or `.csv` file. The first row is treated as headers.
+The app only asks whether to save or export an updated config after an output export. Previewing does not trigger the config-save prompt.
 
-> **Excel date serial headers** are automatically detected and converted. For example, a column header stored as `44927` will appear as `2023-01-01`.
+Saved configs are browser-local for now. They are not shared between users, machines, or browsers.
 
------
+---
 
-### Step 2 — Map
+## Operation Modes
 
-This is where all the work happens. Each row in the mapping table represents one output column.
+Only the UI for the selected operation is shown. For example, Pivot hides regular transform and Unpivot controls; Unpivot hides Pivot and regular transform controls.
 
-#### Column Table
+### Regular Transform
 
-|Column             |Description                                                 |
-|-------------------|------------------------------------------------------------|
-|⠿                  |Drag handle — drag rows to reorder output column positions  |
-|☐                  |Checkbox — select for bulk operations                       |
-|#                  |Row number                                                  |
-|Source Column      |Original column name from the file (or formula/script label)|
-|Output Name        |What the column will be called in the exported file         |
-|Transform / Formula|Operation to apply to the column values                     |
-|Type               |`source`, `formula`, or `const`                             |
-|Actions            |↑ ↓ move, Drop/Restore, ✕ delete (formula cols only)        |
+Use Regular Transform for column-level cleanup and row-level filtering.
 
-#### Per-Column Transforms
+Main capabilities:
 
-|Transform           |What it does                                                       |
-|--------------------|-------------------------------------------------------------------|
-|No change           |Passes value through as-is                                         |
-|Trim spaces         |Strips leading and trailing whitespace                             |
-|→ Date (YYYY-MM-DD) |Parses and reformats dates to ISO format                           |
-|→ Date (MM/DD/YYYY) |Parses and reformats dates to US format                            |
-|→ UPPERCASE         |Converts text to uppercase                                         |
-|→ lowercase         |Converts text to lowercase                                         |
-|→ Title Case        |Capitalises first letter of each word                              |
-|→ Number            |Strips currency symbols and converts to numeric                    |
-|Remove special chars|Keeps only letters, numbers, spaces, `-_.,`                        |
-|→ snake_case        |Converts to lowercase with underscores (useful for DB column names)|
+- Rename output columns.
+- Reorder columns by dragging or using move buttons.
+- Keep selected columns or exclude columns from output.
+- Add formula, constant, and split-derived columns.
+- Change data type and formatting.
+- Apply data-type-specific transforms and formats. Text fields show text cleanup/casing options, number fields show numeric transforms/formats, and date fields show date extraction/format options.
+- Apply bulk rename, prefix, suffix, find/replace, and bulk transforms.
+- Use undo and reset while working.
 
-#### Reordering Columns
+### Data Types, Transforms, and Formats
 
-- **Drag and drop** rows to any position
-- Use **↑ ↓ arrow buttons** for precise one-step moves
-- Output file columns will appear in the order shown
+Transform and format dropdowns are filtered by the selected data type. This keeps the UI focused so date fields do not show number-only options, number fields do not show text cleanup options, and so on.
 
------
+#### Text
 
-### Bulk Operations
+Text transforms:
 
-When one or more checkboxes are ticked, a bulk action bar appears at the top:
+- No change
+- Trim spaces
+- Collapse spaces
+- To UPPERCASE
+- To lowercase
+- To Title Case
+- Remove special characters
+- Remove digits
+- Keep digits only
+- To snake_case
 
-|Action           |Description                                                       |
-|-----------------|------------------------------------------------------------------|
-|Drop selected    |Marks all selected columns as dropped (excluded from output)      |
-|Apply transform  |Sets the same transform on all selected columns at once           |
-|Add prefix/suffix|Prepends or appends text to the output names of selected columns  |
-|Find & replace   |Searches all output names across the whole sheet and replaces text|
-|✕ Clear          |Deselects all                                                     |
+Text formats:
 
-**Bulk Rename** (top toolbar button) lets you run find/replace, add a prefix, and add a suffix all in one step — with scope set to “All columns” or “Selected only”.
+- No format
+- Trim
+- Collapse spaces
+- UPPERCASE
+- lowercase
+- Title Case
+- snake_case
 
------
+#### Number
 
-### Adding Columns
+Number transforms:
 
-Click **＋ Add Column** to open the column builder. Three modes:
+- No change
+- Parse number
+- Absolute value
+- Negate
+- Round
+- Floor
+- Ceil
 
-#### Formula
+Number formats:
 
-Write an Excel-style expression using column references in square brackets.
+- No format
+- Integer
+- Decimal 2
+- Decimal 4
+- Currency
+- Percent
 
-```
-[FirstName] & " " & [LastName]
-UPPER(TRIM([email]))
-IF([Amount]>1000, "High", "Low")
-ROUND([Price] * 1.15, 2)
-LEFT([ProductCode], 3)
-SUBSTITUTE([Phone], "-", "")
-```
+#### Date
 
-Click any **column pill** in the dialog to insert the reference at the cursor position. A live validator shows whether the formula is valid and a sample result.
+Date transforms:
 
-**Supported functions:**
+- No change
+- To `YYYY-MM-DD`
+- To `MM/DD/YYYY`
+- Extract year
+- Extract month number
+- Extract month name
+- Extract day
+- Extract quarter
 
-|Function    |Syntax                            |Description                               |
-|------------|----------------------------------|------------------------------------------|
-|`LEFT`      |`LEFT([col], n)`                  |First n characters                        |
-|`RIGHT`     |`RIGHT([col], n)`                 |Last n characters                         |
-|`MID`       |`MID([col], start, n)`            |n characters from position start (1-based)|
-|`LEN`       |`LEN([col])`                      |Character count                           |
-|`TRIM`      |`TRIM([col])`                     |Remove leading/trailing spaces            |
-|`UPPER`     |`UPPER([col])`                    |Uppercase                                 |
-|`LOWER`     |`LOWER([col])`                    |Lowercase                                 |
-|`PROPER`    |`PROPER([col])`                   |Title case                                |
-|`SUBSTITUTE`|`SUBSTITUTE([col], "old", "new")` |Replace all occurrences                   |
-|`REPLACE`   |`REPLACE([col], start, n, "new")` |Replace n chars at position               |
-|`ROUND`     |`ROUND([col], decimals)`          |Round to decimal places                   |
-|`FLOOR`     |`FLOOR([col], step)`              |Round down to nearest step                |
-|`CEILING`   |`CEILING([col], step)`            |Round up to nearest step                  |
-|`ABS`       |`ABS([col])`                      |Absolute value                            |
-|`MOD`       |`MOD([col], divisor)`             |Remainder                                 |
-|`TEXT`      |`TEXT([col], "0.00")`             |Format number as string                   |
-|`IF`        |`IF(condition, trueVal, falseVal)`|Conditional                               |
-|`ISNULL`    |`ISNULL([col])`                   |True if empty or null                     |
-|`COALESCE`  |`COALESCE([col1], [col2])`        |First non-empty value                     |
-|`CONCAT`    |`CONCAT([a], " ", [b])`           |Join multiple values                      |
-|`TODAY`     |`TODAY()`                         |Today’s date as YYYY-MM-DD                |
+Date formats:
 
-Use `&` or `+` to concatenate strings (both work, same as Excel).
+- No format
+- `YYYY-MM-DD`
+- `MM/DD/YYYY`
+- `YYYYMMDD`
+- `MMM YYYY`
+- `YYYY-MM`
+- Month name
 
-#### Constant
+#### Boolean
 
-Adds a fixed value to every row. Useful for tagging rows with a source system, client name, load date, etc.
+Boolean transforms:
 
-```
-CLIENT_A
-2024
-PENDING
-```
+- No change
+- Trim spaces
+- To UPPERCASE
+- To lowercase
 
-#### Split Column
+Boolean formats:
 
-Splits an existing column by a delimiter and extracts one part.
+- No format
+- `true / false`
+- `Yes / No`
+- `Y / N`
 
-- Pick the **source column**
-- Enter the **delimiter** (e.g. `,` or `-` or type `space`)
-- Enter the **part number** (1 = first part, 2 = second, etc.)
+These same type-aware controls are used in regular mapping, bulk transforms, pivot and aggregate measures, and unpivot generated fields.
 
-Example: splitting `[FullAddress]` by `,` with part `2` extracts the city from `"123 Main St, Springfield, IL"`.
+### Row Filters
 
------
+Regular Transform supports filtering by multiple columns from the UI.
 
-### Script Editor
+Filter behavior is based on field type:
 
-For complex transformations that go beyond formulas, the toolbar has two script buttons that open a full-screen JavaScript editor with a console, a reference sidebar, and a saved script library.
+- Text fields support text-oriented matching.
+- Number fields support numeric comparisons.
+- Date fields support date-oriented comparisons.
+- Custom JavaScript filters can be used for advanced logic.
 
-#### ⌨ Column Script
+### Pivot
 
-Runs a JavaScript block that modifies the column mapping table in bulk. Use this when you need to rename, reformat, drop, or retransform many columns at once based on logic that would be tedious to apply manually.
+Use Pivot when rows need to be summarized across one or more pivot dimensions.
 
-The script has direct access to `colDefs` (the mapping array) and `srcHeaders`. Modify `colDefs` in place — changes are applied to the mapping table when you click **Apply**.
+Typical setup:
 
-**Available colDef fields:**
+- Select grouping fields.
+- Select the pivot field.
+- Select one or more value fields.
+- Choose aggregation behavior.
+- Preview the pivoted output before export.
 
-|Field        |Type   |Description                               |
-|-------------|-------|------------------------------------------|
-|`d.srcCol`   |string |Original source column name               |
-|`d.outName`  |string |Output column name (rename this)          |
-|`d.transform`|string |Transform key (see transform list above)  |
-|`d.dropped`  |boolean|Set to `true` to exclude from output      |
-|`d.formula`  |string |Formula expression (for formula-type cols)|
-|`d.type`     |string |`"source"`, `"formula"`, or `"const"`     |
+### Unpivot
 
-**Examples:**
+Use Unpivot when wide columns need to be converted into rows.
+
+Checking Unpivot opens a centered draggable settings popup. Use `Settings` to reopen the current configuration and `Clear` to remove the active unpivot setup.
+
+Unpivot types:
+
+| Type | Purpose |
+| --- | --- |
+| `Standard` | Converts selected measure columns into attribute/value rows while repeating fixed ID columns. |
+| `Delimited Header` | Splits selected source headers by a delimiter and creates one output row per selected cell. |
+| `Paired Metric` | Groups related columns with matching prefixes into one row containing multiple metric fields. |
+
+#### Standard Unpivot
+
+Fixed ID columns remain unchanged and are repeated for every generated row.
+
+Selected unpivot columns are converted into:
+
+- An attribute column containing the original column name.
+- A value column containing the original cell value.
+
+Example:
+
+Input:
+
+| Student_ID | Math_Score | Science_Score |
+| --- | ---: | ---: |
+| 1 | 90 | 85 |
+
+Output:
+
+| Student_ID | Attribute | Value |
+| --- | --- | ---: |
+| 1 | Math_Score | 90 |
+| 1 | Science_Score | 85 |
+
+The attribute and value output column names can be customized. Type, transform, and format options are available for generated fields.
+
+#### Delimited Header Unpivot
+
+Delimited Header uses a vertical split approach. Every selected source cell creates its own output row.
+
+For each selected column:
+
+1. Split the header by the selected delimiter.
+2. Put the first split part into the configured first attribute column.
+3. Put the remaining split text into the configured second attribute column.
+4. Put the cell value into the configured value column.
+
+Example with delimiter `_`:
+
+Input:
+
+| id | 2024_Sales | 2024_Profit |
+| --- | ---: | ---: |
+| 1 | 100 | 40 |
+
+Output:
+
+| id | Year | Metric | Amount |
+| --- | --- | --- | ---: |
+| 1 | 2024 | Sales | 100 |
+| 1 | 2024 | Profit | 40 |
+
+The first attribute name, second attribute name, and value column name are user-configurable. Attribute and value fields can also have type, transform, and format settings.
+
+#### Paired Metric Unpivot
+
+Paired Metric groups related columns by a shared prefix and outputs multiple value columns on the same generated row.
+
+Example with delimiter `_`:
+
+Input:
+
+| id | Q1_Sales | Q1_Profit | Q2_Sales | Q2_Profit |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 100 | 40 | 150 | 55 |
+
+Output:
+
+| id | Period | Sales | Profit |
+| --- | --- | ---: | ---: |
+| 1 | Q1 | 100 | 40 |
+| 1 | Q2 | 150 | 55 |
+
+This is useful when columns share a common identifier such as month, quarter, year, or scenario and each group contains related metrics.
+
+### Aggregate
+
+Use Aggregate when rows should be grouped and summarized without building a pivot table.
+
+Typical setup:
+
+- Select group-by fields.
+- Select measure fields.
+- Choose aggregation functions.
+- Preview and export the summarized output.
+
+---
+
+## Scripts
+
+The app includes JavaScript scripting for advanced cases.
+
+### Column Script
+
+Column scripts modify the column mapping definition. Use them to rename, drop, reorder, or change transforms across many columns.
+
+Example:
 
 ```js
-// Rename all date headers to P_YYYYMMDD format
-colDefs.forEach(d => {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(d.srcCol)) {
-    d.outName = 'P_' + d.srcCol.replace(/-/g, '');
-  }
-});
-```
-
-```js
-// Add dest_ prefix to all non-dropped columns
-colDefs.forEach(d => {
-  if (!d.dropped) d.outName = 'dest_' + d.outName;
-});
-```
-
-```js
-// Drop any column whose name contains "tmp" or "test"
 colDefs.forEach(d => {
   if (/tmp|test/i.test(d.srcCol)) d.dropped = true;
 });
 ```
 
-```js
-// Set trim transform on all source columns
-colDefs.forEach(d => {
-  if (d.type === 'source') d.transform = 'trim';
-});
-```
+### Row Script
 
-```js
-// Rename columns from a lookup map
-const map = {
-  'cust_id':    'CustomerID',
-  'ord_dt':     'OrderDate',
-  'prod_code':  'ProductCode',
-};
-colDefs.forEach(d => {
-  if (map[d.srcCol]) d.outName = map[d.srcCol];
-});
-```
+Row scripts run during Preview and Export and can modify or drop rows.
 
------
-
-#### ⌨ Row Script
-
-Runs a `transformRow(row)` function against every single row during Preview and Export. Use this for complex per-row logic: conditional value changes, multi-column derivations, date formatting, row filtering, or anything that the formula engine can’t express cleanly.
-
-**Signature:**
+Example:
 
 ```js
 function transformRow(row) {
-  const out = Object.assign({}, row); // clone — don't mutate row directly
-  // ... modify out ...
-  return out;       // return modified row to keep it
-  // return null;   // return null to DROP the row from output
-}
-```
-
-The function receives `row` as a plain object keyed by **source column names**. It must return either a modified row object or `null`/`false` to drop the row.
-
-**Built-in helper functions** (available inside the script without importing):
-
-|Helper           |Description                                    |
-|-----------------|-----------------------------------------------|
-|`trim(s)`        |Strip whitespace from string                   |
-|`upper(s)`       |Uppercase                                      |
-|`lower(s)`       |Lowercase                                      |
-|`left(s, n)`     |First n characters                             |
-|`right(s, n)`    |Last n characters                              |
-|`isBlank(v)`     |True if null, undefined, or empty string       |
-|`num(v)`         |Parse to number, stripping currency symbols    |
-|`toDate(v)`      |Parse to JS Date (handles Excel serial numbers)|
-|`fmtDate(v, fmt)`|Parse and format a date value                  |
-
-**`fmtDate` format strings:**
-
-|Format string |Example output|
-|--------------|--------------|
-|`'YYYY-MM-DD'`|`2024-03-15`  |
-|`'YYYYMMDD'`  |`20240315`    |
-|`'P_YYYYMMDD'`|`P_20240315`  |
-|`'MM/DD/YYYY'`|`03/15/2024`  |
-
-**Examples:**
-
-```js
-// Format all date columns as P_YYYYMMDD
-function transformRow(row) {
+  if (!row.Amount || Number(row.Amount) === 0) return null;
   const out = Object.assign({}, row);
-  for (const key of Object.keys(out)) {
-    const d = toDate(out[key]);
-    if (d) out[key] = fmtDate(out[key], 'P_YYYYMMDD');
-  }
+  out.Amount = Number(row.Amount);
   return out;
 }
 ```
 
-```js
-// Drop rows where Amount is zero or blank
-function transformRow(row) {
-  if (isBlank(row.Amount) || num(row.Amount) === 0) return null;
-  return Object.assign({}, row);
-}
-```
+Scripts are saved in browser `localStorage` and remain local to that browser.
 
-```js
-// Combine first + last name, clean phone
-function transformRow(row) {
-  const out = Object.assign({}, row);
-  out.FullName = trim(row.FirstName + ' ' + row.LastName);
-  out.Phone = out.Phone.replace(/[^\d]/g, '');
-  return out;
-}
-```
+---
 
-```js
-// Flag high-value orders, drop cancelled ones
-function transformRow(row) {
-  if (row.Status === 'CANCELLED') return null;
-  const out = Object.assign({}, row);
-  out.ValueBand = num(row.Amount) >= 10000 ? 'HIGH' : 'STANDARD';
-  return out;
-}
-```
+## Preview and Export
 
-> **Note:** The Row Script runs **after** all column mapping and transforms are applied. If you need to work with the original source column names, use the Row Script. If you need to work with the output column names, be aware that renaming happens in the mapping table first.
+Preview shows transformed rows before writing a file. Use it to verify column names, values, filters, pivot output, unpivot output, and aggregate output.
 
------
+Export downloads the transformed result. After export, the app can ask whether to save or download the latest transformation config.
 
-#### Script Editor UI
+---
 
-|Button               |Action                                                                                                                                      |
-|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
-|**▶ Test**           |Runs the script against the first 3 rows and prints results to the console — does not modify any data                                       |
-|**✓ Apply**          |Column Script: applies changes to the mapping table immediately. Row Script: activates the script for all subsequent Preview and Export runs|
-|**💾 Save**           |Prompts for a name and saves the script to the browser’s local storage                                                                      |
-|**Load saved script**|Dropdown of previously saved scripts (filtered by mode — column scripts only appear in Column mode)                                         |
-|**Delete**           |Removes the currently selected saved script from storage                                                                                    |
+## Processing Notes
 
-Scripts are saved per browser via `localStorage`. They persist across sessions but are browser-local — they are not stored in the HTML file itself. To share scripts between users, copy and paste the code manually or embed common scripts as defaults in the HTML.
+- Header rows are treated as field names.
+- Excel date serial headers are detected and converted where possible.
+- Config validation checks saved mappings against the uploaded file headers.
+- Local saved configs and scripts use browser `localStorage`.
+- Browser local storage is not a database and is not shared across devices.
+- For future database-backed configs, the current config JSON can be used as the portable format.
 
-Tab key inserts two spaces. Escape closes the editor.
-
------
-
-### Row Filter
-
-Collapse/expand from the **Row Filter** card:
-
-|Mode                 |Behaviour                                                        |
-|---------------------|-----------------------------------------------------------------|
-|Keep all rows        |No filtering (default)                                           |
-|Drop fully empty rows|Removes rows where all active source columns are blank           |
-|Filter by value      |Keeps only rows where a chosen column contains a specified string|
-
------
-
-### Step 3 — Preview
-
-Shows the first 10 rows with all mapping rules applied — including any active Row Script. Review column names, order, and values before committing the full export.
-
------
-
-### Step 4 — Export
-
-Exports two files to the browser’s Downloads folder:
-
-- `filename_mapped.xlsx` — Excel workbook
-- `filename_mapped.csv` — comma-separated, UTF-8
-
------
-
-## Processing Order
-
-When exporting, operations are applied in this order:
-
-1. **Row filter** — drop rows that don’t match the filter condition
-1. **Column mapping** — apply per-column transforms and evaluate formula/const columns
-1. **Column reordering** — output columns appear in the order shown in the mapping table
-1. **Row Script** — `transformRow()` runs on each row after mapping (if a row script is active)
-
------
-
-## Technical Notes
-
-- **No external dependencies** — the entire application is one HTML file with no CDN calls, no npm packages, no server-side code
-- **Runs fully in the browser** — data is never uploaded anywhere
-- **XLSX parser** is built-in, handling ZIP decompression via the browser’s native `DecompressionStream` API (requires Edge 80+, Chrome 80+, Firefox 113+)
-- **Formula engine** uses JavaScript’s `Function` constructor in strict mode with a sandboxed function scope — only the listed functions are available
-- **Script engine** similarly sandboxes user code — scripts run in strict mode with no access to the DOM or browser APIs beyond what is explicitly provided
-- **Script library** is stored in `localStorage` under the key `colmapper_scripts` — it is browser-local and not shared between users or machines
-- **Excel date serial detection** applies to header rows (auto-converted on load) and data values (via the date transform or `fmtDate` helper in scripts)
-
------
+---
 
 ## Browser Compatibility
 
-|Browser        |Minimum Version|
-|---------------|---------------|
-|Microsoft Edge |80+            |
-|Google Chrome  |80+            |
-|Mozilla Firefox|113+           |
+| Browser | Minimum Version |
+| --- | --- |
+| Microsoft Edge | 80+ |
+| Google Chrome | 80+ |
+| Mozilla Firefox | 113+ |
 
 Internet Explorer is not supported.
 
------
+---
 
 ## Updating the Tool
 
-Replace `excel_mapper.html` on the server with the new version. All users get the update immediately on next page load.
+Replace the deployed `excel-transformer.html` file with the new version. Users receive the update the next time they reload the page.
 
-> Saved scripts are stored in each user’s browser `localStorage` and are **not** affected by updating the HTML file — they will still be there after an update.
+Saved configs and scripts remain in each user's browser `localStorage` unless that browser data is cleared.
