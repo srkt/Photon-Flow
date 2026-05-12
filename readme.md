@@ -1,6 +1,16 @@
-# Excel Transformer
+# Photon-Flow
 
-Excel Transformer is a self-contained browser tool for reshaping Excel and CSV files. It can map columns, filter rows, pivot, unpivot, aggregate, preview results, export output files, and save reusable transformation configs.
+Photon-Flow is a web-based ETL tool built to make data preparation simple and super fast.
+
+The project is moving beyond a single Excel utility into a broader extraction, transformation, and loading workflow. The current working step is the Excel Transformer module, which handles browser-based Excel and CSV reshaping.
+
+## Excel Transformer
+
+### Current ETL Step
+
+Excel Transformer is the first transformation step in Photon-Flow. It can map columns, filter rows, pivot, unpivot, aggregate, preview results, export output files, and save reusable transformation configs.
+
+The Excel Transformer interface should be treated as a focused step inside the larger Photon-Flow workflow. Where possible, its sections should be minimizable so users can collapse completed areas and see only the active steps, similar to an accordion.
 
 The app runs from one file: `excel-transformer.html`.
 
@@ -23,6 +33,8 @@ No server is required for normal use. File parsing, transformations, preview, ex
 7. After export, choose whether to save or download the transformation config.
 
 Use `Reupload File` at the top of the app to start over with a new source file without returning to the initial screen.
+
+As Photon-Flow grows, this Excel Transformer flow should remain one compact step in the larger ETL process rather than the whole product surface.
 
 ---
 
@@ -69,6 +81,8 @@ Saved configs are browser-local for now. They are not shared between users, mach
 ## Operation Modes
 
 Only the UI for the selected operation is shown. For example, Pivot hides regular transform and Unpivot controls; Unpivot hides Pivot and regular transform controls.
+
+For the Photon-Flow experience, operation sections should be collapsible/minimizable when practical. The goal is to keep the page fast to scan: users should be able to collapse setup, mapping, filter, preview, and export areas once each step is complete.
 
 ### Regular Transform
 
