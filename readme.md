@@ -72,6 +72,10 @@ Supported config actions:
 
 The app checks whether referenced source columns exist in the uploaded file. If there are mismatches, it reports the discrepancies before applying the config.
 
+Configs can also preserve column-script logic. When a config was saved after applying a Column Script, the app stores that script and reruns it against the newly uploaded file's current headers before validating and restoring the mapping. Saved edits for old source columns are kept when those columns still exist. If an old source column is no longer present, the stale saved definition is overridden by the script-generated mapping for the new headers.
+
+For example, if a column script renames headers that match a date or year/month pattern, a later file can contain a new set of matching period columns and the config can rebuild the mapping from the new headers.
+
 The app only asks whether to save or export an updated config after an output export. Previewing does not trigger the config-save prompt.
 
 Saved configs are browser-local for now. They are not shared between users, machines, or browsers.
@@ -96,7 +100,8 @@ Main capabilities:
 - Add formula, constant, and split-derived columns.
 - Change data type and formatting.
 - Apply data-type-specific transforms and formats. Text fields show text cleanup/casing options, number fields show numeric transforms/formats, and date fields show date extraction/format options.
-- Apply bulk rename, prefix, suffix, find/replace, and bulk transforms.
+- Apply bulk rename, prefix, suffix, find/replace, and bulk settings.
+- Apply data type, transform, and format to multiple selected fields at once. In the bulk settings modal, each setting can be enabled independently, so users can apply only a format, only a data type, or a combined update to the selected columns.
 - Use undo and reset while working.
 
 ### Data Types, Transforms, and Formats
@@ -144,9 +149,13 @@ Number formats:
 
 - No format
 - Integer
+- Integer with comma
 - Decimal 2
+- Decimal 2 with comma
 - Decimal 4
+- Decimal 4 with comma
 - Currency
+- Currency with comma
 - Percent
 
 #### Date
@@ -188,7 +197,9 @@ Boolean formats:
 - `Yes / No`
 - `Y / N`
 
-These same type-aware controls are used in regular mapping, bulk transforms, pivot and aggregate measures, and unpivot generated fields.
+These same type-aware controls are used in regular mapping, bulk settings, pivot and aggregate measures, and unpivot generated fields.
+
+Comma-separated number formats are available as explicit format choices for integer, decimal, and currency outputs. `No format` and `Percent` intentionally do not include comma variants.
 
 ### Row Filters
 
@@ -322,6 +333,8 @@ The app includes JavaScript scripting for advanced cases.
 ### Column Script
 
 Column scripts modify the column mapping definition. Use them to rename, drop, reorder, or change transforms across many columns.
+
+When a transformation config is saved after a Column Script is applied, the script is included in the config. Reusing that config on a new file reruns the script against the new file headers, preserves saved source-column edits that are still valid, and overrides stale saved source-column definitions when their old headers are gone. Formula and constant columns are restored only when their source references are still valid or are recreated by the script. This is useful for source files where period columns change over time but still follow the same naming pattern.
 
 Example:
 

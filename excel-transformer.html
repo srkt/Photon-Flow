@@ -1090,7 +1090,7 @@
             Keep selected
           </button>
           <button class="btn btn-ghost btn-sm" onclick="openModal('bulkapply')">
-            Apply transform
+            Apply settings
           </button>
           <button
             class="btn btn-ghost btn-sm"
@@ -1919,8 +1919,11 @@
       const FIELD_FORMATS = [
         ['none', 'No format'],
         ['integer', 'Integer'],
+        ['integer_comma', 'Integer with comma'],
         ['decimal2', 'Decimal 2'],
+        ['decimal2_comma', 'Decimal 2 with comma'],
         ['currency', 'Currency'],
+        ['currency_comma', 'Currency with comma'],
         ['percent', 'Percent'],
         ['date_iso', 'Date YYYY-MM-DD'],
         ['date_us', 'Date MM/DD/YYYY'],
@@ -1993,9 +1996,13 @@
         number: [
           ['none', 'No format'],
           ['integer', 'Integer'],
+          ['integer_comma', 'Integer with comma'],
           ['decimal2', 'Decimal 2'],
+          ['decimal2_comma', 'Decimal 2 with comma'],
           ['decimal4', 'Decimal 4'],
+          ['decimal4_comma', 'Decimal 4 with comma'],
           ['currency', 'Currency'],
+          ['currency_comma', 'Currency with comma'],
           ['percent', 'Percent'],
         ],
         date: [
@@ -2140,6 +2147,7 @@
       let pendingConfig = null,
         activeConfigName = '',
         activeConfigBaseline = null,
+        activeColumnScript = null,
         suppressConfigDirty = false,
         lastConfigPromptSignature = '';
       // colDef: { id, srcCol, outName, transform, dropped, formula(optional), type:'source'|'formula'|'const' }
@@ -2412,6 +2420,7 @@
           aggEnabled: aggOn(),
           aggGroups: getFieldList('aggGroupList'),
           aggMeasures: getMeasures('aggMeasureList'),
+          activeColumnScript,
           activeRowScript:
             typeof activeRowScript === 'undefined' ? null : activeRowScript,
         };
@@ -2464,6 +2473,7 @@
           aggEnabled: state.aggEnabled,
           aggGroups: state.aggGroups,
           aggMeasures: state.aggMeasures,
+          activeColumnScript: state.activeColumnScript,
           activeRowScript: state.activeRowScript,
         };
       }
@@ -2489,9 +2499,23 @@
         return config;
       }
 
-      function configToState(config) {
-        const t = normalizeConfig(config)?.transform;
-        if (!t) throw new Error('Invalid transformation config.');
+      function runColumnScriptOnDefs(defs, headers, code, console2) {
+        if (!String(code || '').trim()) return defs;
+        const fn = new Function(
+          'colDefs',
+          'srcHeaders',
+          'console2',
+          '"use strict";\n' + code,
+        );
+        fn(defs, headers, console2 || {
+          log: () => {},
+          warn: () => {},
+          error: () => {},
+        });
+        return defs;
+      }
+
+      function stateFromTransform(t) {
         return {
           colDefs: cloneDefs(t.colDefs),
           rowFilter: t.rowFilter || 'all',
@@ -2530,8 +2554,62 @@
           aggEnabled: !!t.aggEnabled,
           aggGroups: t.aggGroups || [],
           aggMeasures: t.aggMeasures || [],
+          activeColumnScript: t.activeColumnScript || null,
           activeRowScript: t.activeRowScript || null,
         };
+      }
+
+      function formulaSourceRefs(expr) {
+        const refs = [];
+        String(expr || '').replace(/\[([^\]]+)\]/g, (_, col) => {
+          refs.push(col);
+          return '';
+        });
+        return refs;
+      }
+
+      function adaptConfigStateToHeaders(state) {
+        if (!String(state.activeColumnScript || '').trim()) return state;
+        const headerSet = new Set(srcHeaders);
+        const scriptedDefs = runColumnScriptOnDefs(
+          defaultColDefs(),
+          srcHeaders,
+          state.activeColumnScript,
+        );
+        const adaptedDefs = cloneDefs(scriptedDefs);
+        const scriptedBySource = new Map(
+          adaptedDefs.map((d, i) => [d.srcCol, i]),
+        );
+
+        state.colDefs
+          .filter((d) => (d.type || 'source') === 'source')
+          .forEach((savedDef) => {
+            if (!headerSet.has(savedDef.srcCol)) return;
+            const idx = scriptedBySource.get(savedDef.srcCol);
+            if (idx >= 0) adaptedDefs[idx] = cloneDefs([savedDef])[0];
+          });
+
+        const outputNames = new Set(adaptedDefs.map((d) => d.outName));
+        const savedGeneratedDefs = state.colDefs
+          .filter((d) => (d.type || 'source') !== 'source')
+          .filter((d) =>
+            formulaSourceRefs(d.formula).every((ref) => headerSet.has(ref)),
+          )
+          .filter((d) => {
+            if (outputNames.has(d.outName)) return false;
+            outputNames.add(d.outName);
+            return true;
+          });
+        return {
+          ...state,
+          colDefs: [...adaptedDefs, ...savedGeneratedDefs],
+        };
+      }
+
+      function configToState(config) {
+        const t = normalizeConfig(config)?.transform;
+        if (!t) throw new Error('Invalid transformation config.');
+        return adaptConfigStateToHeaders(stateFromTransform(t));
       }
 
       function validateConfigAgainstHeaders(config, headers) {
@@ -2545,13 +2623,20 @@
 
         const headerSet = new Set(headers);
         const sourceHeaders = normalized.sourceHeaders || [];
-        const t = normalized.transform;
+        let state;
+        try {
+          state = adaptConfigStateToHeaders(stateFromTransform(normalized.transform));
+        } catch (err) {
+          return {
+            ok: false,
+            errors: [`Column script error: ${err.message}`],
+            warnings: [],
+          };
+        }
+        const t = state;
         const formulaRefs = [];
         t.colDefs.forEach((d) => {
-          String(d.formula || '').replace(/\[([^\]]+)\]/g, (_, col) => {
-            formulaRefs.push(col);
-            return '';
-          });
+          formulaRefs.push(...formulaSourceRefs(d.formula));
         });
         const sourceRefs = t.colDefs
           .filter((d) => (d.type || 'source') === 'source')
@@ -2638,11 +2723,11 @@
           errors.push(
             `Config references output columns that are not produced: ${missingOutputRefs.join(', ')}`,
           );
-        if (missingOriginal.length)
+        if (missingOriginal.length && !t.activeColumnScript)
           warnings.push(
             `Columns from the config's original file are absent here: ${missingOriginal.join(', ')}`,
           );
-        if (extraHeaders.length)
+        if (extraHeaders.length && !t.activeColumnScript)
           warnings.push(
             `This data file has extra columns not used by the config: ${extraHeaders.join(', ')}`,
           );
@@ -2939,6 +3024,7 @@
 
       function restoreMappingState(state) {
         colDefs = cloneDefs(state.colDefs);
+        activeColumnScript = state.activeColumnScript || null;
         rowFilter = state.rowFilter || 'all';
         setRadioValue('rf', rowFilter);
         const filterCol = document.getElementById('filterCol');
@@ -3077,12 +3163,13 @@
         if (!rawData.length) return;
         if (
           !confirm(
-            'Reset mapping, filters, pivot/aggregate settings, and active row script for this file?',
+            'Reset mapping, filters, pivot/aggregate settings, and active scripts for this file?',
           )
         )
           return;
         pushUndoState('Reset mapping');
         colDefs = defaultColDefs();
+        activeColumnScript = null;
         rowFilter = 'all';
         setRadioValue('rf', 'all');
         const filterCol = document.getElementById('filterCol');
@@ -4178,6 +4265,7 @@
           if (ae) ae.checked = false;
           renderColTable();
           activeConfigName = '';
+          activeColumnScript = null;
           activeConfigBaseline = mappingStateForConfig();
           lastConfigPromptSignature = '';
           renderUnpivotNameMeta();
@@ -4385,20 +4473,27 @@
       <button class="btn btn-accent btn-sm" onclick="applyBulkRename()">Apply</button>
     </div>`;
         } else if (type === 'bulkapply') {
-          html = `<div class="modaltitle">APPLY TRANSFORM TO SELECTED</div>
-    <div style="display:grid;grid-template-columns:150px 1fr;gap:8px">
+          html = `<div class="modaltitle">APPLY SETTINGS TO SELECTED</div>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
       <div>
+        <label class="rflbl" style="margin-bottom:6px"><input type="checkbox" id="baUseDataType" checked> DATA TYPE</label>
         <div class="fplbl">DATA TYPE</div>
-        <select class="fpinput" id="baDataType" style="cursor:pointer" onchange="document.getElementById('baTransform').innerHTML=transformForValue(this.value,'none')">${dataTypeOptions('text')}</select>
+        <select class="fpinput" id="baDataType" style="cursor:pointer" onchange="updateBulkApplyOptions()">${dataTypeOptions('text')}</select>
       </div>
       <div>
+        <label class="rflbl" style="margin-bottom:6px"><input type="checkbox" id="baUseTransform" checked> TRANSFORM</label>
         <div class="fplbl">TRANSFORM</div>
         <select class="fpinput" id="baTransform" style="cursor:pointer">${transformForValue('text', 'none')}</select>
+      </div>
+      <div>
+        <label class="rflbl" style="margin-bottom:6px"><input type="checkbox" id="baUseFormat"> FORMAT</label>
+        <div class="fplbl">FORMAT</div>
+        <select class="fpinput" id="baFormat" style="cursor:pointer">${fieldFormatOptions('text', 'none')}</select>
       </div>
     </div>
     <div class="modalbtns">
       <button class="btn btn-ghost btn-sm" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-accent btn-sm" onclick="applyBulkTransform()">Apply</button>
+      <button class="btn btn-accent btn-sm" onclick="applyBulkSettings()">Apply</button>
     </div>`;
         } else if (type === 'dropcolumns') {
           html = `<div class="modaltitle">DROP COLUMNS</div>
@@ -4521,6 +4616,14 @@
         st.style.color = r.ok ? 'var(--green)' : 'var(--red)';
       }
 
+      function updateBulkApplyOptions() {
+        const type = document.getElementById('baDataType')?.value || 'text';
+        const transform = document.getElementById('baTransform');
+        const format = document.getElementById('baFormat');
+        if (transform) transform.innerHTML = transformForValue(type, transform.value || 'none');
+        if (format) format.innerHTML = fieldFormatOptions(type, format.value || 'none');
+      }
+
       function renderDropColumnChoices(filter) {
         const list = document.getElementById('dropColumnList');
         if (!list) return;
@@ -4588,22 +4691,36 @@
         renderColTable();
       }
 
-      function applyBulkTransform() {
+      function applyBulkSettings() {
         const dt = document.getElementById('baDataType')?.value || 'text';
-        const t = document.getElementById('baTransform').value;
+        const t = document.getElementById('baTransform')?.value || 'none';
+        const f = document.getElementById('baFormat')?.value || 'none';
+        const useType = !!document.getElementById('baUseDataType')?.checked;
+        const useTransform = !!document.getElementById('baUseTransform')?.checked;
+        const useFormat = !!document.getElementById('baUseFormat')?.checked;
         if (!getSelected().length) {
           closeModal();
           return;
         }
-        pushUndoState('Bulk transform');
+        if (!useType && !useTransform && !useFormat) {
+          alert('Choose at least one setting to apply.');
+          return;
+        }
+        pushUndoState('Bulk settings');
         getSelected().forEach((i) => {
-          colDefs[i].dataType = dt;
-          colDefs[i].transform = t;
+          if (!colDefs[i]) return;
+          if (useType) colDefs[i].dataType = dt;
+          if (useTransform) colDefs[i].transform = t;
+          if (useFormat) colDefs[i].format = f;
           normalizeFieldMeta(colDefs[i]);
         });
         closeModal();
         clearSelection();
         renderColTable();
+      }
+
+      function applyBulkTransform() {
+        applyBulkSettings();
       }
 
       function applyBulkPrefixSuffix() {
@@ -5607,13 +5724,30 @@
           if (format === 'boolean_yes_no') return isTrue ? 'Yes' : 'No';
           return isTrue ? 'Y' : 'N';
         }
-        if (format === 'integer' || format === 'decimal2' || format === 'decimal4' || format === 'currency' || format === 'percent') {
+        if (format === 'integer' || format === 'integer_comma' || format === 'decimal2' || format === 'decimal2_comma' || format === 'decimal4' || format === 'decimal4_comma' || format === 'currency' || format === 'currency_comma' || format === 'percent') {
           const n = parseFloat(String(val).replace(/[^0-9.\-]/g, ''));
           if (isNaN(n)) return val;
           if (format === 'integer') return Math.round(n);
+          if (format === 'integer_comma')
+            return Math.round(n).toLocaleString();
           if (format === 'decimal2') return n.toFixed(2);
+          if (format === 'decimal2_comma')
+            return n.toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            });
           if (format === 'decimal4') return n.toFixed(4);
+          if (format === 'decimal4_comma')
+            return n.toLocaleString(undefined, {
+              minimumFractionDigits: 4,
+              maximumFractionDigits: 4,
+            });
           if (format === 'currency') return '$' + n.toFixed(2);
+          if (format === 'currency_comma')
+            return '$' + n.toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            });
           if (format === 'percent') return (n * 100).toFixed(2) + '%';
         }
         if (['date_iso', 'date_us', 'date_compact', 'date_month_year', 'date_year_month', 'date_month_name'].includes(format)) {
@@ -6037,6 +6171,7 @@
             .join('\n');
 
           editor.value =
+            activeColumnScript ||
             editor.value ||
             `// COLUMN SCRIPT
 // Available: colDefs (array), srcHeaders (array)
@@ -6107,6 +6242,7 @@ ${['none', 'trim', 'date_iso', 'date_us', 'uppercase', 'lowercase', 'titlecase',
             .join('\n');
 
           editor.value =
+            activeRowScript ||
             editor.value ||
             `// ROW SCRIPT
 // Function is called once per row.
@@ -6204,14 +6340,9 @@ ${srcHeaders.map((h) => `<div style="color:#5a7a9a">row["${esc(h)}"]</div>`).joi
           if (scriptMode === 'column') {
             // Deep copy colDefs for testing
             const testDefs = JSON.parse(JSON.stringify(colDefs));
-            const fn = new Function(
-              'colDefs',
-              'srcHeaders',
-              'console2',
-              '"use strict";\n' + code,
-            );
+            const fn = runColumnScriptOnDefs;
             const logs = [];
-            fn(testDefs, srcHeaders, {
+            fn(testDefs, srcHeaders, code, {
               log: (...a) => logs.push(a.join(' ')),
               warn: (...a) => logs.push('⚠ ' + a.join(' ')),
               error: (...a) => logs.push('✗ ' + a.join(' ')),
@@ -6265,17 +6396,13 @@ ${srcHeaders.map((h) => `<div style="color:#5a7a9a">row["${esc(h)}"]</div>`).joi
         try {
           if (scriptMode === 'column') {
             pushUndoState('Apply column script');
-            const fn = new Function(
-              'colDefs',
-              'srcHeaders',
-              'console2',
-              '"use strict";\n' + code,
-            );
-            fn(colDefs, srcHeaders, {
+            const fn = runColumnScriptOnDefs;
+            fn(colDefs, srcHeaders, code, {
               log: (...a) => consolePrint(a.join(' ')),
               warn: (...a) => consolePrint('⚠ ' + a.join(' ')),
               error: (...a) => consolePrint('✗ ' + a.join(' '), true),
             });
+            activeColumnScript = code;
             renderColTable();
             consolePrint('✓ Column mapping updated.');
             closeScriptEditor();
